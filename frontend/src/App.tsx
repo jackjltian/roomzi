@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,6 +14,7 @@ import LandlordDashboard from "./pages/LandlordDashboard";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
+import Chat from "./pages/Chat";
 import UserProvider from "./context/UserContext";
 
 const queryClient = new QueryClient();
@@ -37,6 +37,7 @@ const App = () => (
             <Route path="/landlord/profile" element={<LandlordProfile />} />
             <Route path="/property/:id" element={<PropertyDetails />} />
             <Route path="/create-listing" element={<CreateListing />} />
+            <Route path="/chat" element={<Chat />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

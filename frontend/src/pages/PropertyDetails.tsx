@@ -1,4 +1,3 @@
-
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -7,12 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { MapPin, Home, User, ArrowLeft, Calendar, Settings, MessageCircle } from 'lucide-react';
 import { sampleProperties } from '@/data/sampleProperties';
 import Map from '@/components/Map';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { ChatWindow } from '@/components/chat/ChatWindow';
 
 const PropertyDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
   
   const property = sampleProperties.find(p => p.id === id);
 
@@ -176,7 +178,10 @@ const PropertyDetails = () => {
               </div>
               
               <div className="space-y-3">
-                <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-md">
+                <Button 
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-md"
+                  onClick={() => setIsChatOpen(true)}
+                >
                   Send Message
                 </Button>
                 <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
@@ -188,6 +193,13 @@ const PropertyDetails = () => {
                 </Button>
               </div>
             </Card>
+
+            {/* Chat Dialog */}
+            <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
+              <DialogContent className="max-w-2xl h-[80vh] p-0">
+                <ChatWindow />
+              </DialogContent>
+            </Dialog>
 
             {/* Enhanced Map */}
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
