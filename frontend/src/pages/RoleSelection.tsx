@@ -1,4 +1,3 @@
-
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -11,13 +10,7 @@ const RoleSelection = () => {
 
   const handleRoleSelect = (role: 'tenant' | 'landlord') => {
     setUserRole(role);
-    // if (role === 'tenant') {
-    //   navigate('/tenant');
-    // } else {
-    //   navigate('/landlord');
-    // }
-     navigate('/signup'); // Redirect to signup page,
-
+    navigate('/signup');
   };
 
   return (

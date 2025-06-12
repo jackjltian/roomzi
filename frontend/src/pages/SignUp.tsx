@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { FaHome } from "react-icons/fa";
+import { useUser } from "@/context/UserContext";
+import { supabase } from "@/lib/supabaseClient";
 
 const SignUp = () => {
   const [form, setForm] = useState({ fullName: "", phone: "", email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { userRole } = useUser();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -18,24 +21,46 @@ const SignUp = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoading(true);
 
-    // Sign up user
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
-      phone: form.phone,
-      options: { data: { full_name: form.fullName } }
-    });
+    try {
+      console.log('Starting signup process...'); // Debug log
+      
+      // Sign up user with metadata including role and full name
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            full_name: form.fullName,
+            phone: form.phone,
+            role: userRole || 'tenant'
+          },
+          emailRedirectTo: `${window.location.origin}/login`
+        }
+      });
 
-    if (signUpError) {
-      setError(signUpError.message);
-      return;
+      console.log('Signup response:', { data, error: signUpError }); // Debug log
+
+      if (signUpError) {
+        throw signUpError;
+      }
+
+      console.log('Signup successful, navigating to login...'); // Debug log
+
+      // Show success message and redirect
+      navigate("/login", { 
+        state: { 
+          message: "Please check your email to verify your account before logging in.",
+          type: "success"
+        }
+      });
+    } catch (error: any) {
+      console.error('Signup error:', error); // Debug log
+      setError(error.message || 'An error occurred during signup');
+    } finally {
+      setLoading(false);
     }
-
-    // Optionally, insert into your profile table here
-
-    // Redirect to login or dashboard
-    navigate("/login");
   };
 
   return (
@@ -59,14 +84,50 @@ const SignUp = () => {
           </span>
         </div>
         <h2 className="text-xl font-semibold mb-2 text-center text-gray-900">Create your Roomzi account</h2>
-        <p className="text-gray-600 mb-6 text-center">Sign up to get started as a tenant or landlord</p>
+        <p className="text-gray-600 mb-6 text-center">Sign up to get started as a {userRole || 'tenant'}</p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input name="fullName" placeholder="Full Name" value={form.fullName} onChange={handleChange} required />
-          <Input name="phone" placeholder="Phone" value={form.phone} onChange={handleChange} required />
-          <Input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} required />
-          <Input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} required />
+          <Input 
+            name="fullName" 
+            placeholder="Full Name" 
+            value={form.fullName} 
+            onChange={handleChange} 
+            required 
+            disabled={loading}
+          />
+          <Input 
+            name="phone" 
+            placeholder="Phone" 
+            value={form.phone} 
+            onChange={handleChange} 
+            required 
+            disabled={loading}
+          />
+          <Input 
+            name="email" 
+            type="email" 
+            placeholder="Email" 
+            value={form.email} 
+            onChange={handleChange} 
+            required 
+            disabled={loading}
+          />
+          <Input 
+            name="password" 
+            type="password" 
+            placeholder="Password" 
+            value={form.password} 
+            onChange={handleChange} 
+            required 
+            disabled={loading}
+          />
           {error && <div className="text-red-500 text-sm text-center">{error}</div>}
-          <Button type="submit" className="w-full py-3 text-lg font-semibold">Sign Up</Button>
+          <Button 
+            type="submit" 
+            className="w-full py-3 text-lg font-semibold" 
+            disabled={loading}
+          >
+            {loading ? 'Creating Account...' : 'Sign Up'}
+          </Button>
         </form>
         <div className="my-6 flex items-center justify-center">
           <span className="h-px w-16 bg-gray-200" />
@@ -80,6 +141,7 @@ const SignUp = () => {
             variant="link" 
             className="text-roomzi-blue font-semibold p-0 h-auto" 
             onClick={() => navigate("/login")}
+            disabled={loading}
           >
             Log in
           </Button>
