@@ -1,5 +1,5 @@
 import express from "express";
-import propertiesRouter from "./properties.js";
+
 
 const router = express.Router();
 
@@ -14,6 +14,6 @@ router.get("/health", (req, res) => {
 });
 
 // Mount routes
-router.use("/properties", propertiesRouter);
+
 
 export default router;
