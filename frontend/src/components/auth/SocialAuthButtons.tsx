@@ -3,16 +3,55 @@ import { Button } from "@/components/ui/button";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook, FaDiscord } from "react-icons/fa";
 import { MdEmail } from "react-icons/md";
+import { useUser } from "@/context/UserContext";
 
 export const SocialAuthButtons = () => {
+  const { userRole } = useUser();
+
   const handleSocialLogin = async (provider: "google" | "facebook" | "discord") => {
-    await supabase.auth.signInWithOAuth({ provider });
+    // Determine redirect URL based on selected role
+    let redirectTo = `${window.location.origin}/login`;
+    
+    // If user has selected a role, we can redirect them directly to their dashboard
+    if (userRole === 'tenant') {
+      redirectTo = `${window.location.origin}/tenant`;
+    } else if (userRole === 'landlord') {
+      redirectTo = `${window.location.origin}/landlord`;
+    }
+
+    const { error } = await supabase.auth.signInWithOAuth({ 
+      provider,
+      options: {
+        redirectTo,
+        queryParams: {
+          role: userRole || 'tenant' // Pass role as query parameter
+        }
+      }
+    });
+
+    if (error) {
+      console.error('Social login error:', error);
+    }
   };
 
   const handleMagicLink = async () => {
     const email = prompt("Enter your email for a magic link:");
     if (email) {
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      let redirectTo = `${window.location.origin}/login`;
+      
+      if (userRole === 'tenant') {
+        redirectTo = `${window.location.origin}/tenant`;
+      } else if (userRole === 'landlord') {
+        redirectTo = `${window.location.origin}/landlord`;
+      }
+
+      const { error } = await supabase.auth.signInWithOtp({ 
+        email,
+        options: {
+          emailRedirectTo: redirectTo
+        }
+      });
+      
       if (error) {
         alert(error.message);
       } else {

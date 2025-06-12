@@ -1,15 +1,28 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { SocialAuthButtons } from "@/components/auth/SocialAuthButtons";
 import { FaHome } from "react-icons/fa";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/components/ui/use-toast";
 
 const Login = () => {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { signIn } = useAuth();
+  const { toast } = useToast();
+
+  // Show message if redirected from signup
+  const message = location.state?.message;
+  if (message) {
+    toast({
+      title: "Account Created",
+      description: message,
+    });
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -19,18 +32,12 @@ const Login = () => {
     e.preventDefault();
     setError(null);
 
-    const { error: loginError } = await supabase.auth.signInWithPassword({
-      email: form.email,
-      password: form.password,
-    });
-
-    if (loginError) {
-      setError(loginError.message);
-      return;
+    try {
+      await signIn(form.email, form.password);
+      // Redirection will be handled by AuthContext after successful login
+    } catch (error: any) {
+      setError(error.message);
     }
-
-    // Redirect to dashboard or home
-    navigate("/");
   };
 
   return (
@@ -95,11 +102,10 @@ const Login = () => {
           <Button 
             variant="link" 
             className="text-roomzi-blue font-semibold p-0 h-auto" 
-            onClick={() => navigate("/SignUp")}
+            onClick={() => navigate("/role-selection")}
           >
             Sign up
           </Button>
-          {/* <a href="/signup" className="text-roomzi-blue font-semibold hover:underline">Sign up</a> */}
         </div>
       </div>
     </div>

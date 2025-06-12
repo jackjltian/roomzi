@@ -3,13 +3,15 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus } from 'lucide-react';
+import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
+  const { signOut, user } = useAuth();
 
   const handleCreateListing = () => {
     navigate('/create-listing');
@@ -17,6 +19,9 @@ const LandlordDashboard = () => {
 
   const totalIncome = properties.reduce((sum, property) => sum + property.price, 0);
   const occupiedProperties = properties.filter(p => !p.available).length;
+
+  // Get user's name from metadata or email
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
 
   useEffect(() => {
     async function fetchProperties() {
@@ -51,9 +56,19 @@ const LandlordDashboard = () => {
                 variant="outline" 
                 size="sm"
                 onClick={() => navigate('/landlord/profile')}
+                className="hover:bg-green-50"
               >
                 <User className="w-4 h-4 mr-2" />
                 Profile
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => signOut()}
+                className="hover:bg-red-50 text-red-600"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
               </Button>
             </div>
           </div>
@@ -63,7 +78,7 @@ const LandlordDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, Sarah!</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {userName}!</h2>
           <p className="text-gray-600">Manage your properties and connect with tenants</p>
         </div>
 
