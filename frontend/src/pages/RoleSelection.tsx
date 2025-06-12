@@ -11,11 +11,13 @@ const RoleSelection = () => {
 
   const handleRoleSelect = (role: 'tenant' | 'landlord') => {
     setUserRole(role);
-    if (role === 'tenant') {
-      navigate('/tenant');
-    } else {
-      navigate('/landlord');
-    }
+    // if (role === 'tenant') {
+    //   navigate('/tenant');
+    // } else {
+    //   navigate('/landlord');
+    // }
+     navigate('/signup'); // Redirect to signup page,
+
   };
 
   return (
