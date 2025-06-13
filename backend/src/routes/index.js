@@ -1,5 +1,5 @@
 import express from "express";
-
+import landlordController from "../controllers/landlordController.js";
 
 const router = express.Router();
 
@@ -14,6 +14,9 @@ router.get("/health", (req, res) => {
 });
 
 // Mount routes
+export const landlordRouter = express.Router();
 
+landlordRouter.post('/create-listing', landlordController.createListing);
+landlordRouter.get('/get-listings', landlordController.getListings);
 
 export default router;

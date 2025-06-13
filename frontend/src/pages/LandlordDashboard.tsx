@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 
 const LandlordDashboard = () => {
-  const [properties] = useState<Property[]>(sampleProperties);
+  const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
 
   const handleCreateListing = () => {
@@ -17,6 +17,24 @@ const LandlordDashboard = () => {
 
   const totalIncome = properties.reduce((sum, property) => sum + property.price, 0);
   const occupiedProperties = properties.filter(p => !p.available).length;
+
+  useEffect(() => {
+    async function fetchProperties() {
+      const response = await fetch('http://localhost:3001/api/landlord/get-listings', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setProperties(data);
+      }
+    }
+
+    fetchProperties();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
@@ -103,7 +121,7 @@ const LandlordDashboard = () => {
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">
                 <img
-                  src={property.images[0]}
+                  // src={property.images[0]}
                   alt={property.title}
                   className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
                 />
@@ -133,7 +151,7 @@ const LandlordDashboard = () => {
 
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-2xl font-bold text-roomzi-blue">
-                    ${property.price.toLocaleString()}
+                    {/* ${property.price.toLocaleString()} */}
                     <span className="text-sm font-normal text-gray-500">/month</span>
                   </div>
                 </div>

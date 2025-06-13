@@ -4,6 +4,7 @@ import cors from "cors";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { successResponse } from "./utils/response.js";
 import { supabase } from "./config/supabase.js";
+import { landlordRouter } from "./routes/index.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -19,6 +20,9 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Routes
+app.use('/api/landlord', landlordRouter);
 
 // Basic health check route
 app.get("/api/health", (req, res) => {

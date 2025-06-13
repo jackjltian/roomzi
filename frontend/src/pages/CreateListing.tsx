@@ -60,6 +60,14 @@ const CreateListing = () => {
     e.preventDefault();
     console.log('Creating listing:', formData);
     // Here you would typically send the data to your backend
+    const response = fetch('http://localhost:3001/api/landlord/create-listing', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify(formData)
+    });
     navigate('/landlord');
   };
 
