@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { EmojiPicker } from './EmojiPicker';
 import { toast } from '../ui/use-toast';
+import { chatApi, Message as ApiMessage } from '@/api/chat';
 import {
   Tooltip,
   TooltipContent,
@@ -38,6 +39,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+
+interface ChatWindowProps {
+  propertyTitle?: string;
+  propertyImage?: string;
+  landlordName?: string;
+  landlordImage?: string;
+  chatRoomId?: string;
+}
 
 interface Message {
   id: string;
@@ -53,13 +62,6 @@ interface Message {
   isEditing?: boolean;
 }
 
-interface ChatWindowProps {
-  propertyTitle?: string;
-  propertyImage?: string;
-  landlordName?: string;
-  landlordImage?: string;
-}
-
 const REACTIONS = [
   { emoji: '👍', icon: ThumbsUp },
   { emoji: '❤️', icon: Heart },
@@ -68,11 +70,17 @@ const REACTIONS = [
 
 const MAX_MESSAGE_LENGTH = 1000;
 
+// Add temporary user ID
+const TEMP_USER_ID = "999";
+const TEMP_LANDLORD_ID = "888";
+const TEMP_PROPERTY_ID = "777";
+
 export function ChatWindow({ 
   propertyTitle = "Modern Downtown Apartment",
   propertyImage = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
   landlordName,
-  landlordImage
+  landlordImage,
+  chatRoomId
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -86,13 +94,110 @@ export function ChatWindow({
   const [currentLandlordName, setCurrentLandlordName] = useState(() => landlordName || 'Landlord');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Update currentLandlordName when landlordName prop changes
+  // Fetch messages when chatRoomId changes
   useEffect(() => {
-    if (landlordName) {
-      setCurrentLandlordName(landlordName);
+    if (chatRoomId) {
+      fetchMessages();
     }
-  }, [landlordName]);
+  }, [chatRoomId]);
+
+  const fetchMessages = async () => {
+    if (!chatRoomId) return;
+    
+    try {
+      setIsLoading(true);
+      const apiMessages = await chatApi.getMessages(chatRoomId);
+      const formattedMessages = apiMessages.map((msg: ApiMessage) => ({
+        id: msg.id,
+        content: msg.content,
+        sender: msg.sender_type === 'tenant' ? 'user' : 'landlord',
+        timestamp: new Date(msg.created_at),
+        status: 'sent',
+        type: 'text',
+        reactions: {}
+      }));
+      setMessages(formattedMessages);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load messages",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim()) return;
+
+    let roomId = chatRoomId;
+
+    // If no chatRoomId, find or create one
+    if (!roomId) {
+      try {
+        const chatRoom = await chatApi.findOrCreateChatRoom(TEMP_USER_ID, TEMP_LANDLORD_ID, TEMP_PROPERTY_ID);
+        roomId = chatRoom.id;
+        // Optionally, you could update state here if you want to keep the chatRoomId in the component
+        // setChatRoomId(roomId);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Could not create or find chat room.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const tempMessage: Message = {
+      id: Date.now().toString(),
+      content: newMessage,
+      sender: 'user',
+      timestamp: new Date(),
+      status: 'sending',
+      type: 'text',
+      replyTo: replyTo || undefined,
+      reactions: {}
+    };
+
+    setMessages(prev => [...prev, tempMessage]);
+    setNewMessage('');
+    setReplyTo(null);
+
+    try {
+      const sentMessage = await chatApi.sendMessage(
+        roomId,
+        TEMP_USER_ID,
+        newMessage,
+        'tenant'
+      );
+
+      setMessages(prev => prev.map(m => 
+        m.id === tempMessage.id 
+          ? {
+              ...m,
+              id: sentMessage.id,
+              status: 'sent'
+            }
+          : m
+      ));
+    } catch (error: any) {
+      setMessages(prev => prev.map(m => 
+        m.id === tempMessage.id 
+          ? { ...m, status: 'error' }
+          : m
+      ));
+      toast({
+        title: "Error Sending Message",
+        description: error.response?.data?.message || error.message || "Failed to send message",
+        variant: "destructive",
+      });
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -107,62 +212,6 @@ export function ChatWindow({
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     setShowScrollButton(scrollHeight - scrollTop - clientHeight > 100);
-  };
-
-  const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      const message: Message = {
-        id: Date.now().toString(),
-        content: newMessage,
-        sender: 'user',
-        timestamp: new Date(),
-        status: 'sending',
-        type: 'text',
-        replyTo: replyTo || undefined,
-        reactions: {}
-      };
-      setMessages([...messages, message]);
-      setNewMessage('');
-      setReplyTo(null);
-      
-      // Simulate message sending
-      setTimeout(() => {
-        setMessages(prev => prev.map(m => 
-          m.id === message.id ? { ...m, status: 'sent' } : m
-        ));
-        
-        // Simulate message delivery
-        setTimeout(() => {
-          setMessages(prev => prev.map(m => 
-            m.id === message.id ? { ...m, status: 'delivered' } : m
-          ));
-          
-          // Simulate message read
-          setTimeout(() => {
-            setMessages(prev => prev.map(m => 
-              m.id === message.id ? { ...m, status: 'read' } : m
-            ));
-            
-            // Simulate landlord typing
-            setIsTyping(true);
-            setTimeout(() => {
-              setIsTyping(false);
-              // Simulate landlord response
-              const response: Message = {
-                id: (Date.now() + 1).toString(),
-                content: "Thank you for your interest! I'll get back to you shortly.",
-                sender: 'landlord',
-                timestamp: new Date(),
-                status: 'sent',
-                type: 'text',
-                reactions: {}
-              };
-              setMessages(prev => [...prev, response]);
-            }, 2000);
-          }, 1000);
-        }, 1000);
-      }, 1000);
-    }
   };
 
   const handleEditMessage = (message: Message) => {
@@ -220,35 +269,29 @@ export function ChatWindow({
           // Remove user's previous reaction if any
           Object.keys(reactions).forEach(key => {
             reactions[key] = reactions[key].filter(id => id !== userId);
-            if (reactions[key].length === 0) {
-              delete reactions[key];
-            }
           });
           // Add new reaction
           reactions[reaction] = [...(reactions[reaction] || []), userId];
         }
+
         return { ...m, reactions };
       }
       return m;
     }));
-
-    // Close the message menu
-    setActiveMenuId(null);
-    setHoveredMessageId(null);
   };
 
   const getStatusIcon = (status: Message['status']) => {
     switch (status) {
       case 'sending':
-        return <Clock className="h-3 w-3 animate-spin" />;
+        return <Clock className="h-3 w-3" />;
       case 'sent':
         return <Check className="h-3 w-3" />;
       case 'delivered':
         return <Check className="h-3 w-3" />;
       case 'read':
-        return <Check className="h-3 w-3 text-blue-500" />;
+        return <Check className="h-3 w-3" />;
       case 'error':
-        return <AlertCircle className="h-3 w-3 text-red-500" />;
+        return <AlertCircle className="h-3 w-3" />;
       default:
         return null;
     }
@@ -267,74 +310,28 @@ export function ChatWindow({
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Check if file is an image
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: "Invalid file type",
-        description: "Please select an image file.",
-        variant: "destructive",
-      });
-      return;
+    if (file) {
+      // Handle file upload
+      console.log('File selected:', file);
     }
-
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Please select an image smaller than 5MB.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageUrl = e.target?.result as string;
-      const message: Message = {
-        id: Date.now().toString(),
-        content: "Shared an image",
-        sender: 'user',
-        timestamp: new Date(),
-        status: 'sent',
-        type: 'image',
-        imageUrl,
-        reactions: {}
-      };
-      setMessages(prev => [...prev, message]);
-
-      // Simulate landlord response for image
-      const response: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "Thanks for sharing the image! I'll take a look at it.",
-        sender: 'landlord',
-        timestamp: new Date(),
-        status: 'sent',
-        type: 'text',
-        reactions: {}
-      };
-      setMessages(prev => [...prev, response]);
-    };
-    reader.readAsDataURL(file);
   };
 
   const formatTimestamp = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    if (hours < 24) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (hours < 48) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString();
-    }
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    if (days < 7) return `${days}d`;
+    return date.toLocaleDateString();
   };
 
   const groupMessagesByDate = (messages: Message[]) => {
-    const groups: { [key: string]: Message[] } = {};
+    const groups: Record<string, Message[]> = {};
     messages.forEach(message => {
       const date = message.timestamp.toLocaleDateString();
       if (!groups[date]) {
@@ -623,9 +620,9 @@ export function ChatWindow({
 
       {/* Scroll to Bottom Button */}
       {showScrollButton && (
-        <Button
+        <Button 
           variant="secondary"
-          size="icon"
+          size="icon" 
           className="absolute bottom-20 right-6 rounded-full shadow-lg"
           onClick={scrollToBottom}
         >

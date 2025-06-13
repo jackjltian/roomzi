@@ -197,7 +197,11 @@ const PropertyDetails = () => {
             {/* Chat Dialog */}
             <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
               <DialogContent className="max-w-2xl h-[80vh] p-0">
-                <ChatWindow />
+                <ChatWindow 
+                  propertyTitle={property.title}
+                  propertyImage={property.images[0]}
+                  landlordName={property.landlordName}
+                />
               </DialogContent>
             </Dialog>
 
