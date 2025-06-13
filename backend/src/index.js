@@ -5,6 +5,8 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { successResponse } from "./utils/response.js";
 import { supabase } from "./config/supabase.js";
 import { landlordRouter } from "./routes/index.js";
+import { prisma } from "./config/prisma.js";
+import apiRoutes from "./routes/index.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -21,6 +23,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// API routes
+app.use("/api", apiRoutes);
+
 // Routes
 app.use('/api/landlord', landlordRouter);
 
@@ -31,6 +36,7 @@ app.get("/api/health", (req, res) => {
       {
         environment: process.env.NODE_ENV,
         frontendUrl: process.env.FRONTEND_URL,
+        database: "Connected",
       },
       "Server is running"
     )
@@ -40,6 +46,19 @@ app.get("/api/health", (req, res) => {
 // Error handling middleware
 app.use(errorHandler);
 
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("\n🔄 Gracefully shutting down...");
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\n🔄 Gracefully shutting down...");
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
 // Start server
 app.listen(port, () => {
   console.log(`
@@ -47,5 +66,11 @@ app.listen(port, () => {
 📡 Port: ${port}
 🌍 Environment: ${process.env.NODE_ENV || "development"}
 🔗 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:8080"}
+🗄️  Database: Prisma + Supabase PostgreSQL
+📋 API Routes: 
+   • /api/landlords - Landlord management
+   • /api/tenants - Tenant management  
+   • /api/listings - Property listings
+   • /api/chats - Messaging system
   `);
 });

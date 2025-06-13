@@ -1,21 +1,88 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home } from 'lucide-react';
-import { useUser } from '@/context/UserContext';
+import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2 } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { landlordApi, ApiError } from '@/utils/api';
+import { updateUserMetadata } from '@/utils/auth';
 
 const TenantProfile = () => {
   const navigate = useNavigate();
-  const { userRole, setUserRole } = useUser();
+  const { currentRole, setUserRole } = useUserRole();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
+  const [switching, setSwitching] = useState(false);
 
-  const handleSwitchToLandlord = () => {
-    setUserRole('landlord');
-    navigate('/landlord');
+  const handleSwitchToLandlord = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSwitching(true);
+    
+    try {
+      console.log('Switching to landlord role...');
+      
+      // Step 1: Create landlord profile if needed using centralized API
+      const profileResult = await landlordApi.create(user.id, user.email || '');
+      
+      if (profileResult.success) {
+        if (profileResult.alreadyExists) {
+          console.log('✅ Landlord profile already exists - user can proceed');
+        } else {
+          console.log('✅ New landlord profile created successfully');
+        }
+      }
+      
+      // Step 2: Update Supabase metadata
+      await updateUserMetadata('landlord');
+      
+      // Step 3: Update local role
+      setUserRole('landlord');
+      
+      // Step 4: Show success and navigate
+      toast({
+        title: "Role Switched",
+        description: "Welcome to your landlord dashboard!",
+        variant: "default",
+      });
+      
+      navigate('/landlord');
+      
+    } catch (error) {
+      console.error('Error switching to landlord:', error);
+      
+      let errorMessage = "Unable to switch to landlord role. Please try again.";
+      
+      if (error instanceof ApiError) {
+        if (error.status === 0) {
+          errorMessage = "Unable to connect to server. Please check your internet connection.";
+        } else {
+          errorMessage = error.message;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: "Switch Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setSwitching(false);
+    }
   };
 
   const tabs = [
@@ -72,9 +139,14 @@ const TenantProfile = () => {
               onClick={handleSwitchToLandlord}
               variant="outline"
               className="flex items-center"
+              disabled={switching}
             >
-              <Home className="w-4 h-4 mr-2" />
-              Switch to Landlord
+              {switching ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Home className="w-4 h-4 mr-2" />
+              )}
+              {switching ? 'Switching...' : 'Switch to Landlord'}
             </Button>
           </div>
         </Card>

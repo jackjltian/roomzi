@@ -1,6 +1,7 @@
 import { useAuth } from '@/context/AuthContext';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { getCurrentUserRole, getRedirectPath } from '@/utils/auth';
 
 interface RoleProtectedRouteProps {
   children: React.ReactNode;
@@ -30,24 +31,18 @@ export const RoleProtectedRoute = ({ children, requiredRole }: RoleProtectedRout
     );
   }
 
-  // Redirect to login if not authenticated
+  // Redirect to auth if not authenticated
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   // Check if user has the required role
-  const userRole = user.user_metadata?.role;
+  const userRole = getCurrentUserRole(user);
   
   if (userRole !== requiredRole) {
     // Redirect to appropriate dashboard based on actual role
-    if (userRole === 'tenant') {
-      return <Navigate to="/tenant" replace />;
-    } else if (userRole === 'landlord') {
-      return <Navigate to="/landlord" replace />;
-    } else {
-      // If no role is set, redirect to role selection
-      return <Navigate to="/role-selection" replace />;
-    }
+    const redirectPath = getRedirectPath(user);
+    return <Navigate to={redirectPath} replace />;
   }
 
   return <>{children}</>;

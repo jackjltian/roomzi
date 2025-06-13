@@ -1,5 +1,8 @@
 import express from "express";
-import landlordController from "../controllers/landlordController.js";
+import landlordRoutes from "./landlordRoutes.js";
+import tenantRoutes from "./tenantRoutes.js";
+import listingRoutes from "./listingRoutes.js";
+import chatRoutes from "./chatRoutes.js";import landlordController from "../controllers/landlordController.js";
 
 const router = express.Router();
 
@@ -14,6 +17,11 @@ router.get("/health", (req, res) => {
 });
 
 // Mount routes
+router.use("/landlords", landlordRoutes);
+router.use("/tenants", tenantRoutes);
+router.use("/listings", listingRoutes);
+router.use("/chats", chatRoutes);
+
 export const landlordRouter = express.Router();
 
 landlordRouter.post('/create-listing', landlordController.createListing);

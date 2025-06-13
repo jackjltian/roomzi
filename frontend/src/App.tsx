@@ -14,51 +14,64 @@ import LandlordDashboard from "./pages/LandlordDashboard";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
-import UserProvider from "./context/UserContext";
-import SignUp from "./pages/SignUp";
-import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
+import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
-import AuthCallback from "./pages/AuthCallback";
+import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <UserProvider>
-      <BrowserRouter>
-        <AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
             <Routes>
-              {/* Public routes */}
+              {/* Public routes - ONLY Index page is public */}
               <Route path="/" element={<Index />} />
-              <Route path="/role-selection" element={<RoleSelection />} />
+              
+              {/* Auth-related routes - don't require existing auth but handle auth flow */}
               <Route 
-                path="/signup" 
+                path="/auth" 
                 element={
                   <ProtectedRoute requireAuth={false}>
-                    <SignUp />
+                    <Auth />
                   </ProtectedRoute>
                 } 
               />
+              {/* Redirect old routes to new unified auth page */}
               <Route 
                 path="/login" 
                 element={
                   <ProtectedRoute requireAuth={false}>
-                    <Login />
+                    <Auth />
                   </ProtectedRoute>
                 } 
               />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route 
+                path="/signup" 
+                element={
+                  <ProtectedRoute requireAuth={false}>
+                    <Auth />
+                  </ProtectedRoute>
+                } 
+              />
               <Route path="/auth/callback" element={<AuthCallback />} />
 
-              {/* Role-protected routes */}
+              {/* Role selection requires auth but allows incomplete profiles */}
+              <Route 
+                path="/role-selection" 
+                element={
+                  <ProtectedRoute>
+                    <RoleSelection />
+                  </ProtectedRoute>
+                } 
+              />
+
+              {/* Role-protected routes - require auth + specific role */}
               <Route 
                 path="/tenant/*" 
                 element={
@@ -83,6 +96,8 @@ const App = () => (
                   </RoleProtectedRoute>
                 } 
               />
+              
+              {/* General protected routes - require auth */}
               <Route 
                 path="/property/:id" 
                 element={
@@ -99,12 +114,20 @@ const App = () => (
                   </RoleProtectedRoute>
                 } 
               />
-              <Route path="*" element={<NotFound />} />
+              
+              {/* 404 page - also requires auth (users must be logged in to see it) */}
+              <Route 
+                path="*" 
+                element={
+                  <ProtectedRoute>
+                    <NotFound />
+                  </ProtectedRoute>
+                } 
+              />
             </Routes>
           </TooltipProvider>
         </AuthProvider>
       </BrowserRouter>
-    </UserProvider>
   </QueryClientProvider>
 );
 
