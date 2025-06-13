@@ -1,21 +1,88 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, User, Camera, FileText, Settings, UserCheck } from 'lucide-react';
-import { useUser } from '@/context/UserContext';
+import { ArrowLeft, User, Camera, FileText, Settings, UserCheck, Loader2 } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { tenantApi, ApiError } from '@/utils/api';
+import { updateUserMetadata } from '@/utils/auth';
 
 const LandlordProfile = () => {
   const navigate = useNavigate();
-  const { setUserRole } = useUser();
+  const { setUserRole } = useUserRole();
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
+  const [switching, setSwitching] = useState(false);
 
-  const handleSwitchToTenant = () => {
-    setUserRole('tenant');
-    navigate('/tenant');
+  const handleSwitchToTenant = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSwitching(true);
+    
+    try {
+      console.log('Switching to tenant role...');
+      
+      // Step 1: Create tenant profile if needed using centralized API
+      const profileResult = await tenantApi.create(user.id, user.email || '');
+      
+      if (profileResult.success) {
+        if (profileResult.alreadyExists) {
+          console.log('✅ Tenant profile already exists - user can proceed');
+        } else {
+          console.log('✅ New tenant profile created successfully');
+        }
+      }
+      
+      // Step 2: Update Supabase metadata
+      await updateUserMetadata('tenant');
+      
+      // Step 3: Update local role
+      setUserRole('tenant');
+      
+      // Step 4: Show success and navigate
+      toast({
+        title: "Role Switched",
+        description: "Welcome to your tenant dashboard!",
+        variant: "default",
+      });
+      
+      navigate('/tenant');
+      
+    } catch (error) {
+      console.error('Error switching to tenant:', error);
+      
+      let errorMessage = "Unable to switch to tenant role. Please try again.";
+      
+      if (error instanceof ApiError) {
+        if (error.status === 0) {
+          errorMessage = "Unable to connect to server. Please check your internet connection.";
+        } else {
+          errorMessage = error.message;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: "Switch Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setSwitching(false);
+    }
   };
 
   const tabs = [
@@ -71,9 +138,14 @@ const LandlordProfile = () => {
               onClick={handleSwitchToTenant}
               variant="outline"
               className="flex items-center"
+              disabled={switching}
             >
-              <UserCheck className="w-4 h-4 mr-2" />
-              Switch to Tenant
+              {switching ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <UserCheck className="w-4 h-4 mr-2" />
+              )}
+              {switching ? 'Switching...' : 'Switch to Tenant'}
             </Button>
           </div>
         </Card>
