@@ -180,7 +180,7 @@ export const getLandlordListings = async (req, res) => {
   }
 };
 
-const createListing = async (req, res) => {
+export const createListing = async (req, res) => {
     try {
         console.log("incoming data", req.body);
         const {
@@ -241,7 +241,7 @@ const createListing = async (req, res) => {
     }
 }
 
-const getListings = async (req, res) => {
+export const getListings = async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('listings')
