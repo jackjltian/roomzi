@@ -2,7 +2,8 @@ import express from "express";
 import landlordRoutes from "./landlordRoutes.js";
 import tenantRoutes from "./tenantRoutes.js";
 import listingRoutes from "./listingRoutes.js";
-import chatRoutes from "./chatRoutes.js";import landlordController from "../controllers/landlordController.js";
+import chatRoutes from "./chatRoutes.js";
+import landlordController from "../controllers/landlordController.js";
 
 const router = express.Router();
 
