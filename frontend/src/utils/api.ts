@@ -94,22 +94,10 @@ export const tenantApi = {
         body: JSON.stringify(profileData),
       });
 
-      console.log('Tenant profile created successfully:', response);
+      console.log('Tenant profile created/updated successfully:', response);
       return { success: true, data: response };
       
     } catch (error) {
-      if (error instanceof ApiError) {
-        // Handle existing profile cases
-        if (error.status === 400 && error.data?.message?.includes('already exists')) {
-          console.log('Tenant profile already exists - this is fine');
-          return { success: true, alreadyExists: true };
-        }
-        if (error.status === 409) {
-          console.log('Tenant profile already exists (409) - this is fine');
-          return { success: true, alreadyExists: true };
-        }
-      }
-      
       console.error('Error creating tenant profile:', error);
       throw error;
     }
@@ -164,23 +152,11 @@ export const landlordApi = {
         body: JSON.stringify(profileData),
       });
 
-      console.log('Landlord profile created successfully:', response);
+      console.log('✅ Landlord profile created/updated successfully:', response);
       return { success: true, data: response };
       
     } catch (error) {
-      if (error instanceof ApiError) {
-        // Handle existing profile cases
-        if (error.status === 400 && error.data?.message?.includes('already exists')) {
-          console.log('Landlord profile already exists - this is fine');
-          return { success: true, alreadyExists: true };
-        }
-        if (error.status === 409) {
-          console.log('Landlord profile already exists (409) - this is fine');
-          return { success: true, alreadyExists: true };
-        }
-      }
-      
-      console.error('Error creating landlord profile:', error);
+      console.error('❌ Error creating landlord profile:', error);
       throw error;
     }
   },

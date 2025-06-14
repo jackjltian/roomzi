@@ -71,8 +71,18 @@ export const createLandlord = async (req, res) => {
   try {
     const { id, full_name, email, phone, image_url, address } = req.body;
 
-    const landlord = await prisma.landlord_profiles.create({
-      data: {
+    // Use upsert to handle existing profiles gracefully
+    const landlord = await prisma.landlord_profiles.upsert({
+      where: { id },
+      update: {
+        full_name,
+        email,
+        phone,
+        image_url,
+        address,
+        updated_at: new Date(),
+      },
+      create: {
         id,
         full_name,
         email,
@@ -82,19 +92,16 @@ export const createLandlord = async (req, res) => {
       },
     });
 
-    res
-      .status(201)
-      .json(successResponse(landlord, "Landlord created successfully"));
+    // Return 200 for updates, 201 for new creations
+    const statusCode = landlord.created_at === landlord.updated_at ? 201 : 200;
+    const message =
+      statusCode === 201
+        ? "Landlord created successfully"
+        : "Landlord profile updated successfully";
+
+    res.status(statusCode).json(successResponse(landlord, message));
   } catch (error) {
-    console.error("Error creating landlord:", error);
-
-    // Handle unique constraint violation
-    if (error.code === "P2002") {
-      return res
-        .status(400)
-        .json(errorResponse(new Error("Landlord ID already exists"), 400));
-    }
-
+    console.error("Error creating/updating landlord:", error);
     res.status(500).json(errorResponse(error));
   }
 };
