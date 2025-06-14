@@ -198,8 +198,16 @@ export const createListing = async (req, res) => {
             leaseType,
             amenities,
             requirements,
-            houseRules
+            houseRules,
+            images
         } = req.body;
+
+        // Validate required fields
+        if (!title || !type || !address || !city || !state || !zipCode || !price) {
+            return res.status(400).json({
+                error: 'Missing required fields'
+            });
+        }
 
         const { data, error } = await supabase
             .from('listings')
@@ -218,7 +226,9 @@ export const createListing = async (req, res) => {
                 lease_type: leaseType,
                 amenities,
                 requirements,
-                house_rules: houseRules
+                house_rules: houseRules,
+                images,
+                available: true,
             }])
             .select();
 

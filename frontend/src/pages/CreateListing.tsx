@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Home, Image } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
 
 const CreateListing = () => {
   const navigate = useNavigate();
@@ -25,7 +26,8 @@ const CreateListing = () => {
     leaseType: 'long-term',
     amenities: [],
     requirements: '',
-    houseRules: ''
+    houseRules: '',
+    images: null as File | null,
   });
 
   const propertyTypes = [
@@ -56,19 +58,83 @@ const CreateListing = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const uploadImage = async (file: File) => {
+    const ext = file.name.split('.').pop();
+    const path = `images/${Date.now()}.${ext}`;
+    console.log("Uploading image to path:", path);
+
+    // Check if buckets exist
+    const { data: buckets, error: bucketsError } = await supabase
+      .storage
+      .listBuckets();
+
+    if (bucketsError) {
+      console.error("Error checking buckets:", bucketsError);
+      throw new Error("Failed to check storage buckets");
+    }
+
+    // Check if listings bucket exists
+    const listingsBucket = buckets.find(b => b.name === 'listings');
+    if (!listingsBucket) {
+      throw new Error("Storage bucket 'listings' does not exist.");
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from('listings')
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error(uploadError);
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage.from('listings').getPublicUrl(path);
+    console.log("data", data);
+    return data.publicUrl;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Creating listing:', formData);
-    // Here you would typically send the data to your backend
-    const response = fetch('http://localhost:3001/api/landlord/create-listing', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include',
-      body: JSON.stringify(formData)
-    });
-    navigate('/landlord');
+
+    try {
+      let imageUrl = '';
+
+      if (formData.images instanceof File) {
+        imageUrl = await uploadImage(formData.images);
+      }
+
+      const payload = {
+        ...formData,
+        images: imageUrl
+      };
+      
+      console.log('Creating listing:', payload);
+
+      const response = await fetch('http://localhost:3001/api/landlord/create-listing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create listing.');
+      }
+
+      const result = await response.json();
+      console.log('Listing created successfully:', result);
+
+      navigate('/landlord');
+    } catch (error) {
+      console.error('Error creating listing:', error);
+      alert(error.message || 'Failed to create listing.');
+    }
   };
 
   return (
@@ -309,6 +375,7 @@ const CreateListing = () => {
               <Image className="w-12 h-12 mx-auto mb-4 text-gray-400" />
               <p className="text-gray-600 mb-2">Upload property photos</p>
               <p className="text-sm text-gray-500">Drag and drop or click to browse</p>
+              <input type="file" accept="image/*" onChange={(e) => handleInputChange('images', e.target.files?.[0] || null)} />
               <Button type="button" variant="outline" className="mt-4">
                 Choose Files
               </Button>

@@ -136,7 +136,7 @@ const LandlordDashboard = () => {
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">
                 <img
-                  // src={property.images[0]}
+                  src={property.images}
                   alt={property.title}
                   className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
                 />
@@ -166,7 +166,7 @@ const LandlordDashboard = () => {
 
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-2xl font-bold text-roomzi-blue">
-                    {/* ${property.price.toLocaleString()} */}
+                    ${property.price.toLocaleString()}
                     <span className="text-sm font-normal text-gray-500">/month</span>
                   </div>
                 </div>

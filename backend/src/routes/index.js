@@ -3,7 +3,7 @@ import landlordRoutes from "./landlordRoutes.js";
 import tenantRoutes from "./tenantRoutes.js";
 import listingRoutes from "./listingRoutes.js";
 import chatRoutes from "./chatRoutes.js";
-import landlordController from "../controllers/landlordController.js";
+import { createListing, getListings } from "../controllers/landlordController.js";
 
 const router = express.Router();
 
@@ -25,7 +25,7 @@ router.use("/chats", chatRoutes);
 
 export const landlordRouter = express.Router();
 
-landlordRouter.post('/create-listing', landlordController.createListing);
-landlordRouter.get('/get-listings', landlordController.getListings);
+landlordRouter.post('/create-listing', createListing);
+landlordRouter.get('/get-listings', getListings);
 
 export default router;

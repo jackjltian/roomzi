@@ -7,7 +7,6 @@ import { supabase } from "./config/supabase.js";
 import { landlordRouter } from "./routes/index.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
-import { landlordRouter } from "./routes/index.js";
 
 const app = express();
 const port = process.env.PORT || 3001;

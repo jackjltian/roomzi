@@ -13,7 +13,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: true,
     flowType: 'pkce',
-    redirectTo: `${window.location.origin}/login`
+    // redirectTo: `${window.location.origin}/login`
   },
   global: {
     headers: {
