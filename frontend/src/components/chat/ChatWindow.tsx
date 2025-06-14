@@ -25,7 +25,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { EmojiPicker } from './EmojiPicker';
-import { toast } from '../ui/use-toast';
+import { toast } from '@/hooks/use-toast';
 import { chatApi, Message as ApiMessage } from '@/api/chat';
 import {
   Tooltip,
@@ -39,6 +39,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { useAuth } from '@/context/AuthContext';
+import { getCurrentUserRole } from '@/utils/auth';
 
 interface ChatWindowProps {
   propertyTitle?: string;
@@ -46,12 +48,14 @@ interface ChatWindowProps {
   landlordName?: string;
   landlordImage?: string;
   chatRoomId?: string;
+  landlordId?: string;
+  propertyId?: string;
 }
 
 interface Message {
   id: string;
   content: string;
-  sender: 'user' | 'landlord';
+  sender: 'user' | 'landlord' | 'other';
   timestamp: Date;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'error';
   type: 'text' | 'image';
@@ -70,9 +74,9 @@ const REACTIONS = [
 
 const MAX_MESSAGE_LENGTH = 1000;
 
-// Add temporary user ID
-const TEMP_USER_ID = "999";
+// Add temp IDs for fallback
 const TEMP_LANDLORD_ID = "888";
+const TEMP_TENANT_ID = "999";
 const TEMP_PROPERTY_ID = "777";
 
 export function ChatWindow({ 
@@ -80,8 +84,13 @@ export function ChatWindow({
   propertyImage = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
   landlordName,
   landlordImage,
-  chatRoomId
+  chatRoomId: initialChatRoomId,
+  landlordId,
+  propertyId
 }: ChatWindowProps) {
+  const { user } = useAuth();
+  const userRole = getCurrentUserRole(user);
+  const [chatRoomId, setChatRoomId] = useState<string | undefined>(initialChatRoomId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -96,23 +105,46 @@ export function ChatWindow({
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // On mount, try to find an existing chat room and fetch messages
+  useEffect(() => {
+    const tryFindChatRoom = async () => {
+      if (!chatRoomId && user && landlordId && propertyId) {
+        const tenant_id = userRole === 'tenant' ? user.id : undefined;
+        const landlord_id = userRole === 'tenant' ? landlordId : user.id;
+        try {
+          const chatRoom = await chatApi.findOrCreateChatRoom(
+            tenant_id,
+            landlord_id,
+            propertyId
+          );
+          if (chatRoom && chatRoom.id) {
+            setChatRoomId(chatRoom.id);
+            await fetchMessages(chatRoom.id);
+          }
+        } catch (e) {
+          // Ignore if not found, only create on send
+        }
+      }
+    };
+    tryFindChatRoom();
+    // eslint-disable-next-line
+  }, []);
+
   // Fetch messages when chatRoomId changes
   useEffect(() => {
     if (chatRoomId) {
-      fetchMessages();
+      fetchMessages(chatRoomId);
     }
   }, [chatRoomId]);
 
-  const fetchMessages = async () => {
-    if (!chatRoomId) return;
-    
+  const fetchMessages = async (roomId: string) => {
     try {
       setIsLoading(true);
-      const apiMessages = await chatApi.getMessages(chatRoomId);
+      const apiMessages = await chatApi.getMessages(roomId);
       const formattedMessages = apiMessages.map((msg: ApiMessage) => ({
         id: msg.id,
         content: msg.content,
-        sender: msg.sender_type === 'tenant' ? 'user' : 'landlord',
+        sender: msg.sender_id === user?.id ? 'user' : 'other',
         timestamp: new Date(msg.created_at),
         status: 'sent',
         type: 'text',
@@ -133,16 +165,39 @@ export function ChatWindow({
 
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
+    if (!user?.id) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to send messages",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!userRole) {
+      toast({
+        title: "Error",
+        description: "You must have a valid role to send messages",
+        variant: "destructive",
+      });
+      return;
+    }
 
     let roomId = chatRoomId;
 
     // If no chatRoomId, find or create one
     if (!roomId) {
       try {
-        const chatRoom = await chatApi.findOrCreateChatRoom(TEMP_USER_ID, TEMP_LANDLORD_ID, TEMP_PROPERTY_ID);
+        const tenant_id = userRole === 'tenant' ? user.id : TEMP_TENANT_ID;
+        const landlord_id = userRole === 'tenant' ? landlordId : user.id;
+        const chatRoom = await chatApi.findOrCreateChatRoom(
+          tenant_id,
+          landlord_id,
+          propertyId
+        );
         roomId = chatRoom.id;
-        // Optionally, you could update state here if you want to keep the chatRoomId in the component
-        // setChatRoomId(roomId);
+        setChatRoomId(roomId);
+        await fetchMessages(roomId);
       } catch (error) {
         toast({
           title: "Error",
@@ -156,7 +211,7 @@ export function ChatWindow({
     const tempMessage: Message = {
       id: Date.now().toString(),
       content: newMessage,
-      sender: 'user',
+      sender: userRole === 'tenant' ? 'user' : 'landlord',
       timestamp: new Date(),
       status: 'sending',
       type: 'text',
@@ -170,21 +225,15 @@ export function ChatWindow({
 
     try {
       const sentMessage = await chatApi.sendMessage(
-        roomId,
-        TEMP_USER_ID,
+        roomId!,
+        user.id,
         newMessage,
-        'tenant'
+        userRole,
+        landlordId
       );
 
-      setMessages(prev => prev.map(m => 
-        m.id === tempMessage.id 
-          ? {
-              ...m,
-              id: sentMessage.id,
-              status: 'sent'
-            }
-          : m
-      ));
+      // After sending, re-fetch all messages to ensure correct sender alignment
+      await fetchMessages(roomId!);
     } catch (error: any) {
       setMessages(prev => prev.map(m => 
         m.id === tempMessage.id 
@@ -342,7 +391,10 @@ export function ChatWindow({
     return groups;
   };
 
-  const messageGroups = groupMessagesByDate(messages);
+  // When rendering messages, filter out 'other' messages that are in 'sending' status
+  const displayedMessages = messages.filter(msg => !(msg.status === 'sending' && msg.sender !== 'user'));
+
+  const messageGroups = groupMessagesByDate(displayedMessages);
 
   return (
     <Card className="w-full h-[500px] flex flex-col">

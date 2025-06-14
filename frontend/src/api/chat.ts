@@ -64,14 +64,21 @@ export const chatApi = {
   },
 
   // Send a message
-  sendMessage: async (chatId: string, senderId: string, content: string, senderType: 'tenant' | 'landlord') => {
+  sendMessage: async (
+    chatId: string,
+    senderId: string,
+    content: string,
+    senderType: 'tenant' | 'landlord',
+    landlordId?: string
+  ) => {
     try {
-      console.log('Sending message:', { chatId, senderId, content, senderType });
+      console.log('Sending message:', { chatId, senderId, content, senderType, landlordId });
       const response = await axios.post(`${API_URL}/chat/messages`, {
         chatId,
         senderId,
         content,
-        senderType
+        senderType,
+        ...(landlordId ? { landlordId } : {})
       });
       console.log('Message sent:', response.data);
       return response.data;

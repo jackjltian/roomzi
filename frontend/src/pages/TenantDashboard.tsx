@@ -3,10 +3,11 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon } from 'lucide-react';
+import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import Map from '@/components/Map';
+import { useAuth } from '@/context/AuthContext';
 
 const TenantDashboard = () => {
   const [properties] = useState<Property[]>(sampleProperties);
@@ -16,6 +17,7 @@ const TenantDashboard = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const navigate = useNavigate();
+  const { signOut } = useAuth();
 
   const filteredProperties = properties.filter(property => {
     const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -57,6 +59,15 @@ const TenantDashboard = () => {
               >
                 <User className="w-4 h-4 mr-2" />
                 Profile
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => signOut()}
+                className="hover:bg-red-50 text-red-600"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
               </Button>
             </div>
           </div>

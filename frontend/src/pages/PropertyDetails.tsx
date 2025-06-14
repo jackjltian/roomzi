@@ -201,6 +201,9 @@ const PropertyDetails = () => {
                   propertyTitle={property.title}
                   propertyImage={property.images[0]}
                   landlordName={property.landlordName}
+                  landlordId={property.landlordId}
+                  chatRoomId={undefined}
+                  propertyId={property.id}
                 />
               </DialogContent>
             </Dialog>
