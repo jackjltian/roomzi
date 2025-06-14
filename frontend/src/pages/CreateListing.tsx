@@ -8,8 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Home, Image } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/context/AuthContext';
 
 const CreateListing = () => {
+  const { user } = useAuth();
+
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     title: '',
@@ -28,6 +31,7 @@ const CreateListing = () => {
     requirements: '',
     houseRules: '',
     images: null as File | null,
+    landlord_id: user.id
   });
 
   const propertyTypes = [
