@@ -1,11 +1,21 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
+import { getRedirectPath } from '@/utils/auth';
 
 const Index = () => {
   const [showContent, setShowContent] = useState(false);
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
+
+  // Redirect authenticated users to their dashboard
+  useEffect(() => {
+    if (!loading && user) {
+      const redirectPath = getRedirectPath(user);
+      navigate(redirectPath);
+    }
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -16,9 +26,22 @@ const Index = () => {
   }, []);
 
   const handleGetStarted = () => {
-    navigate('/role-selection');
+    navigate('/auth');
   };
 
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center roomzi-gradient">
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4 text-lg">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Only show landing page to unauthenticated users
   return (
     <div className="min-h-screen flex items-center justify-center roomzi-gradient">
       <div className="text-center text-white px-6">

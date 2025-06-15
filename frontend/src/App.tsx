@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,33 +14,120 @@ import LandlordDashboard from "./pages/LandlordDashboard";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
-import UserProvider from "./context/UserContext";
+import Auth from "./pages/Auth";
+import { AuthProvider } from "./context/AuthContext";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { AuthCallback } from "./pages/AuthCallback";
+import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <UserProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/role-selection" element={<RoleSelection />} />
-            <Route path="/tenant" element={<TenantDashboard />} />
-            <Route path="/tenant/profile" element={<TenantProfile />} />
-            <Route path="/tenant/matches" element={<TenantMatches />} />
-            <Route path="/tenant/my-house" element={<TenantMyHouse />} />
-            <Route path="/landlord" element={<LandlordDashboard />} />
-            <Route path="/landlord/profile" element={<LandlordProfile />} />
-            <Route path="/property/:id" element={<PropertyDetails />} />
-            <Route path="/create-listing" element={<CreateListing />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </UserProvider>
+    <BrowserRouter>
+      <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <Routes>
+              {/* Public routes - ONLY Index page is public */}
+              <Route path="/" element={<Index />} />
+              
+              {/* Auth-related routes - don't require existing auth but handle auth flow */}
+              <Route 
+                path="/auth" 
+                element={
+                  <ProtectedRoute requireAuth={false}>
+                    <Auth />
+                  </ProtectedRoute>
+                } 
+              />
+              {/* Redirect old routes to new unified auth page */}
+              <Route 
+                path="/login" 
+                element={
+                  <ProtectedRoute requireAuth={false}>
+                    <Auth />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/signup" 
+                element={
+                  <ProtectedRoute requireAuth={false}>
+                    <Auth />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+
+              {/* Role selection requires auth but allows incomplete profiles */}
+              <Route 
+                path="/role-selection" 
+                element={
+                  <ProtectedRoute>
+                    <RoleSelection />
+                  </ProtectedRoute>
+                } 
+              />
+
+              {/* Role-protected routes - require auth + specific role */}
+              <Route 
+                path="/tenant/*" 
+                element={
+                  <RoleProtectedRoute requiredRole="tenant">
+                    <Routes>
+                      <Route path="/" element={<TenantDashboard />} />
+                      <Route path="profile" element={<TenantProfile />} />
+                      <Route path="matches" element={<TenantMatches />} />
+                      <Route path="my-house" element={<TenantMyHouse />} />
+                    </Routes>
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/landlord/*" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <Routes>
+                      <Route path="/" element={<LandlordDashboard />} />
+                      <Route path="profile" element={<LandlordProfile />} />
+                    </Routes>
+                  </RoleProtectedRoute>
+                } 
+              />
+              
+              {/* General protected routes - require auth */}
+              <Route 
+                path="/property/:id" 
+                element={
+                  <ProtectedRoute>
+                    <PropertyDetails />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/create-listing" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <CreateListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              
+              {/* 404 page - also requires auth (users must be logged in to see it) */}
+              <Route 
+                path="*" 
+                element={
+                  <ProtectedRoute>
+                    <NotFound />
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </TooltipProvider>
+        </AuthProvider>
+      </BrowserRouter>
   </QueryClientProvider>
 );
 

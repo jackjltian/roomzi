@@ -1,5 +1,8 @@
 import express from "express";
-
+import landlordRoutes from "./landlordRoutes.js";
+import tenantRoutes from "./tenantRoutes.js";
+import listingRoutes from "./listingRoutes.js";
+import chatRoutes from "./chatRoutes.js";
 
 const router = express.Router();
 
@@ -14,6 +17,9 @@ router.get("/health", (req, res) => {
 });
 
 // Mount routes
-
+router.use("/landlords", landlordRoutes);
+router.use("/tenants", tenantRoutes);
+router.use("/listings", listingRoutes);
+router.use("/chats", chatRoutes);
 
 export default router;
