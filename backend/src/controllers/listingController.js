@@ -63,7 +63,27 @@ export const getListings = async (req, res) => {
       prisma.listings.count({ where }),
     ]);
 
-    res.json(paginatedResponse(listings, parseInt(page), take, total));
+    // Convert BigInt fields to strings for JSON serialization
+    const safeListings = listings.map(listing => ({
+      ...listing,
+      id: listing.id.toString(),
+      landlord_id: listing.landlord_id?.toString(),
+      tenant_id: listing.tenant_id?.toString(),
+      landlord_profiles: listing.landlord_profiles
+        ? {
+            ...listing.landlord_profiles,
+            id: listing.landlord_profiles.id?.toString(),
+          }
+        : undefined,
+      tenant_profiles: listing.tenant_profiles
+        ? {
+            ...listing.tenant_profiles,
+            id: listing.tenant_profiles.id?.toString(),
+          }
+        : undefined,
+    }));
+
+    res.json(paginatedResponse(safeListings, parseInt(page), take, total));
   } catch (error) {
     console.error("Error fetching listings:", error);
     res.status(500).json(errorResponse(error));

@@ -6,37 +6,35 @@ import { Button } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/use-toast';
-
-// Temporary user ID for testing
-const TEMP_USER_ID = "123";
-const TEMP_LANDLORD_ID = "456";
+import { useAuth } from '@/context/AuthContext';
 
 export default function Chat() {
+  const { user } = useAuth();
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [selectedChatRoom, setSelectedChatRoom] = useState<ChatRoom | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    fetchChatRooms();
-  }, []);
-
-  const fetchChatRooms = async () => {
-    try {
-      setIsLoading(true);
-      const rooms = await chatApi.getChatRooms(TEMP_USER_ID);
-      console.log('Fetched chat rooms:', rooms);
-      setChatRooms(rooms);
-    } catch (error) {
-      console.error('Error fetching chat rooms:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load chat rooms",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const fetchRooms = async () => {
+      try {
+        setIsLoading(true);
+        if (!user || !user.id) return;
+        const rooms = await chatApi.getChatRooms(user.id);
+        console.log('Fetched chat rooms:', rooms);
+        setChatRooms(rooms);
+      } catch (error) {
+        console.error('Error fetching chat rooms:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load chat rooms",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchRooms();
+  }, [user]);
 
   const handleChatRoomSelect = (room: ChatRoom) => {
     console.log('Selected chat room:', room);
@@ -68,7 +66,7 @@ export default function Chat() {
                   <div className="flex-1 text-left">
                     <p className="font-medium">Property {room.property_id}</p>
                     <p className="text-sm text-muted-foreground">
-                      {room.tenant_id === TEMP_USER_ID ? 'Landlord' : 'Tenant'}
+                      {room.tenant_id === user.id ? 'Landlord' : 'Tenant'}
                     </p>
                   </div>
                 </Button>
@@ -83,7 +81,7 @@ export default function Chat() {
             <ChatWindow
               chatRoomId={selectedChatRoom.id}
               propertyTitle={`Property ${selectedChatRoom.property_id}`}
-              landlordName={selectedChatRoom.landlord_id === TEMP_USER_ID ? 'You' : 'Landlord'}
+              landlordName={selectedChatRoom.landlord_id === user.id ? 'You' : 'Landlord'}
             />
           ) : (
             <Card className="h-[500px] flex items-center justify-center">

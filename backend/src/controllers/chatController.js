@@ -82,11 +82,19 @@ export const createChat = async (req, res) => {
       return res.json(successResponse(existingChat, "Chat already exists"));
     }
 
+    // Fetch names from related tables
+    const tenant = await prisma.tenant_profiles.findUnique({ where: { id: tenant_id } });
+    const landlord = await prisma.landlord_profiles.findUnique({ where: { id: landlord_id } });
+    const property = await prisma.listings.findUnique({ where: { id: BigInt(property_id) } });
+
     const chat = await prisma.chats.create({
       data: {
         tenant_id,
         landlord_id,
         property_id,
+        tenant_name: tenant ? tenant.full_name : null,
+        landlord_name: landlord ? landlord.full_name : null,
+        property_name: property ? property.title : null,
       },
     });
 

@@ -50,6 +50,7 @@ interface ChatWindowProps {
   chatRoomId?: string;
   landlordId?: string;
   propertyId?: string;
+  isFullPage?: boolean;
 }
 
 interface Message {
@@ -74,19 +75,15 @@ const REACTIONS = [
 
 const MAX_MESSAGE_LENGTH = 1000;
 
-// Add temp IDs for fallback
-const TEMP_LANDLORD_ID = "888";
-const TEMP_TENANT_ID = "999";
-const TEMP_PROPERTY_ID = "777";
-
 export function ChatWindow({ 
-  propertyTitle = "Modern Downtown Apartment",
+  propertyTitle,
   propertyImage = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
   landlordName,
   landlordImage,
   chatRoomId: initialChatRoomId,
   landlordId,
-  propertyId
+  propertyId,
+  isFullPage = false
 }: ChatWindowProps) {
   const { user } = useAuth();
   const userRole = getCurrentUserRole(user);
@@ -188,7 +185,7 @@ export function ChatWindow({
     // If no chatRoomId, find or create one
     if (!roomId) {
       try {
-        const tenant_id = userRole === 'tenant' ? user.id : TEMP_TENANT_ID;
+        const tenant_id = userRole === 'tenant' ? user.id : undefined;
         const landlord_id = userRole === 'tenant' ? landlordId : user.id;
         const chatRoom = await chatApi.findOrCreateChatRoom(
           tenant_id,
@@ -397,19 +394,19 @@ export function ChatWindow({
   const messageGroups = groupMessagesByDate(displayedMessages);
 
   return (
-    <Card className="w-full h-[500px] flex flex-col">
+    <Card className={`w-full ${isFullPage ? 'h-full' : 'h-[500px]'} flex flex-col`}>
       {/* Property Context Header */}
       <div className="p-3 border-b bg-white">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg overflow-hidden">
             <img
               src={propertyImage}
-              alt={propertyTitle}
+              alt={propertyTitle || "Modern Downtown Apartment"}
               className="w-full h-full object-cover"
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold truncate">{propertyTitle}</h2>
+            <h2 className="text-base font-semibold truncate">{propertyTitle || "Modern Downtown Apartment"}</h2>
             <div className="flex items-center gap-2">
               <Avatar className="h-5 w-5">
                 <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">

@@ -52,12 +52,21 @@ export function LandlordChats() {
   };
 
   // Filtered and searched chats
-  const filteredChats = chats;
+  const filteredChats = chats.filter(chat => {
+    const searchTerm = search.toLowerCase();
+    return (
+      (chat.propertyTitle?.toLowerCase().includes(searchTerm) || 
+       `Property ${chat.property_id}`.toLowerCase().includes(searchTerm)) ||
+      (chat.tenantName?.toLowerCase().includes(searchTerm) || 
+       chat.tenant_id.toLowerCase().includes(searchTerm)) ||
+      (chat.lastMessage?.toLowerCase().includes(searchTerm))
+    );
+  });
 
   // Header
   if (selectedChat) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-20">
+      <div className="min-h-screen bg-gray-50">
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -75,13 +84,14 @@ export function LandlordChats() {
             </div>
           </div>
         </header>
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="h-[calc(100vh-4rem)]">
           <ChatWindow
             chatRoomId={selectedChat.id}
             propertyTitle={selectedChat.propertyTitle}
             landlordName={user?.email || 'You'}
             propertyId={selectedChat.property_id}
             landlordId={selectedChat.landlord_id}
+            isFullPage={true}
           />
         </div>
       </div>
@@ -159,11 +169,11 @@ export function LandlordChats() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        {chat.property_id}
+                        {chat.propertyTitle || `Property ${chat.property_id}`}
                       </h3>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
-                      <span className="font-medium">Tenant:</span> {chat.tenant_id}
+                      <span className="font-medium">Tenant:</span> {chat.tenantName || chat.tenant_id}
                     </p>
                     <p className="text-gray-700 mb-2 line-clamp-2">
                       {chat.lastMessage ? chat.lastMessage : ''}
