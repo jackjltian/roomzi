@@ -1,0 +1,357 @@
+import { useState, useEffect } from 'react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
+import { Property } from '@/data/sampleProperties';
+import { useNavigate } from 'react-router-dom';
+import Map from '@/components/Map';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { apiFetch } from '@/utils/api';
+import { getApiBaseUrl } from '@/utils/api';
+
+// Helper to safely parse JSON fields
+const parseMaybeJson = (value, fallback = []) => {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      // Not a JSON string, return as array with the string or fallback
+      return [value];
+    }
+  }
+  if (Array.isArray(value)) return value;
+  return fallback;
+};
+
+const TenantDashboard = () => {
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState<string>('all');
+  const [priceRange, setPriceRange] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
+  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchProperties();
+  }, []);
+
+  const fetchProperties = async () => {
+    try {
+      setLoading(true);
+      const response = await apiFetch(`${getApiBaseUrl()}/api/listings`);
+      if (response.success) {
+        // Transform the API response to match our Property interface
+        const transformedProperties = response.data.map((listing: any) => ({
+          id: listing.id,
+          title: listing.title,
+          address: listing.address,
+          city: listing.city,
+          state: listing.state,
+          zipCode: listing.zipCode,
+          price: listing.price,
+          type: listing.type.toLowerCase(),
+          bedrooms: listing.bedrooms,
+          bathrooms: listing.bathrooms,
+          area: listing.area,
+          images: parseMaybeJson(listing.images, []),
+          description: listing.description,
+          amenities: parseMaybeJson(listing.amenities, []),
+          landlordId: listing.landlordId,
+          landlordName: listing.landlordName,
+          landlordPhone: listing.landlordPhone,
+          coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
+          available: listing.available,
+          leaseType: listing.leaseType,
+          requirements: parseMaybeJson(listing.requirements, []),
+          houseRules: parseMaybeJson(listing.houseRules, []),
+        }));
+        setProperties(transformedProperties);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to fetch properties. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching properties:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch properties. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredProperties = properties.filter(property => {
+    const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         property.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         property.city.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesType = selectedType === 'all' || property.type === selectedType;
+    
+    let matchesPrice = true;
+    if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
+    else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
+    else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
+    
+    return matchesSearch && matchesType && matchesPrice;
+  });
+
+  const handlePropertyClick = (propertyId: string) => {
+    navigate(`/property/${propertyId}`);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      {/* Enhanced Header */}
+      <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Room<span className="text-yellow-500">zi</span>
+              </h1>
+              <Badge variant="secondary" className="ml-3 bg-blue-100 text-blue-700">Tenant</Badge>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate('/tenant/profile')}
+                className="hover:bg-blue-50"
+              >
+                <User className="w-4 h-4 mr-2" />
+                Profile
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => signOut()}
+                className="hover:bg-red-50 text-red-600"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24">
+        {/* Enhanced Welcome Section */}
+        <div className="mb-8 text-center">
+          <h2 className="text-4xl font-bold text-gray-900 mb-3">Find Your Perfect Home</h2>
+          <p className="text-gray-600 text-lg">Discover amazing properties with our enhanced search and map view</p>
+        </div>
+
+        {/* Enhanced Search and Filters */}
+        <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+          <div className="flex flex-col lg:flex-row gap-4 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Input
+                placeholder="Search by location, property name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-12 h-12 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex gap-3">
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[120px] hover:border-blue-300 transition-colors"
+              >
+                <option value="all">All Types</option>
+                <option value="room">Room</option>
+                <option value="apartment">Apartment</option>
+                <option value="house">House</option>
+                <option value="condo">Condo</option>
+              </select>
+              <select
+                value={priceRange}
+                onChange={(e) => setPriceRange(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px] hover:border-blue-300 transition-colors"
+              >
+                <option value="all">All Prices</option>
+                <option value="under-2000">Under $2,000</option>
+                <option value="2000-4000">$2,000 - $4,000</option>
+                <option value="over-4000">Over $4,000</option>
+              </select>
+            </div>
+          </div>
+
+          {/* View Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="flex items-center gap-2"
+              >
+                <Grid className="w-4 h-4" />
+                Grid View
+              </Button>
+              <Button
+                variant={viewMode === 'map' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('map')}
+                className="flex items-center gap-2"
+              >
+                <MapIcon className="w-4 h-4" />
+                Map View
+              </Button>
+            </div>
+            <p className="text-gray-600 text-sm">
+              {filteredProperties.length} of {properties.length} properties
+            </p>
+          </div>
+        </Card>
+
+        {/* Content Area */}
+        {viewMode === 'map' ? (
+          <Card className="h-[70vh] overflow-hidden shadow-lg">
+            <Map 
+              properties={filteredProperties} 
+              onPropertyClick={handlePropertyClick}
+              mapboxToken={mapboxToken}
+            />
+            {!mapboxToken && (
+              <div className="absolute bottom-4 right-4 z-10">
+                <input
+                  type="text"
+                  placeholder="Enter Mapbox token..."
+                  value={mapboxToken}
+                  onChange={(e) => setMapboxToken(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+          </Card>
+        ) : loading ? (
+          <div className="flex items-center justify-center h-[70vh]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading properties...</p>
+            </div>
+          </div>
+        ) : filteredProperties.length > 0 ? (
+          /* Enhanced Properties Grid */
+          <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredProperties.map((property) => (
+              <Card 
+                key={property.id} 
+                className="overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer transform hover:scale-[1.02] bg-white border-0 shadow-lg group"
+                onClick={() => handlePropertyClick(property.id)}
+              >
+                <div className="aspect-[4/3] overflow-hidden relative">
+                  <img
+                    src={property.images[0]}
+                    alt={property.title}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  <div className="absolute top-3 right-3">
+                    <Badge variant="secondary" className="bg-white/90 text-gray-700 capitalize backdrop-blur-sm">
+                      {property.type}
+                    </Badge>
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-3 line-clamp-1 group-hover:text-blue-600 transition-colors">
+                    {property.title}
+                  </h3>
+                  
+                  <div className="flex items-center text-gray-600 mb-3">
+                    <MapPin className="w-4 h-4 mr-2 shrink-0 text-blue-500" />
+                    <span className="text-sm line-clamp-1">{property.address}, {property.city}</span>
+                  </div>
+
+                  <div className="flex items-center text-gray-600 mb-4">
+                    <Home className="w-4 h-4 mr-2 shrink-0 text-blue-500" />
+                    <span className="text-sm">
+                      {property.bedrooms} bed • {property.bathrooms} bath • {property.area} sq ft
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                      ${property.price.toLocaleString()}
+                      <span className="text-sm font-normal text-gray-500">/month</span>
+                    </div>
+                    <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-md hover:shadow-lg transition-all">
+                      View Details
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16">
+            <div className="text-gray-500 mb-4">
+              <Home className="w-20 h-20 mx-auto mb-6 opacity-50" />
+              <h3 className="text-xl font-medium mb-2">No properties found</h3>
+              <p className="text-gray-400">Try adjusting your search criteria or filters</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Enhanced Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 py-2 shadow-xl">
+        <div className="flex justify-around items-center max-w-md mx-auto">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 text-blue-600 hover:bg-blue-50"
+            onClick={() => navigate('/tenant')}
+          >
+            <Home className="w-5 h-5 mb-1" />
+            <span className="text-xs font-medium">Browse</span>
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 hover:bg-blue-50"
+            onClick={() => navigate('/tenant/matches')}
+          >
+            <MessageCircle className="w-5 h-5 mb-1" />
+            <span className="text-xs">Matches</span>
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 hover:bg-blue-50"
+            onClick={() => navigate('/tenant/my-house')}
+          >
+            <MapPin className="w-5 h-5 mb-1" />
+            <span className="text-xs">My House</span>
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 hover:bg-blue-50"
+            onClick={() => navigate('/tenant/profile')}
+          >
+            <Settings className="w-5 h-5 mb-1" />
+            <span className="text-xs">Profile</span>
+          </Button>
+        </div>
+      </nav>
+    </div>
+  );
+};
+
+export default TenantDashboard;
