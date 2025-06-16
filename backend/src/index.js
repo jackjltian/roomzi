@@ -7,6 +7,7 @@ import { supabase } from "./config/supabase.js";
 import { landlordRouter } from "./routes/index.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
+import chatRoutes from "./routes/chat.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -28,6 +29,7 @@ app.use('/api/landlord', landlordRouter);
 
 // API routes
 app.use("/api", apiRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Routes
 app.use('/api/landlord', landlordRouter);

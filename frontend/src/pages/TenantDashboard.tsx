@@ -1,16 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
-import { sampleProperties, Property } from '@/data/sampleProperties';
+import { Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { apiFetch } from '@/utils/api';
+import { getApiBaseUrl } from '@/utils/api';
+
+// Helper to safely parse JSON fields
+const parseMaybeJson = (value, fallback = []) => {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      // Not a JSON string, return as array with the string or fallback
+      return [value];
+    }
+  }
+  if (Array.isArray(value)) return value;
+  return fallback;
+};
 
 const TenantDashboard = () => {
-  const [properties] = useState<Property[]>(sampleProperties);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
@@ -18,6 +36,61 @@ const TenantDashboard = () => {
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchProperties();
+  }, []);
+
+  const fetchProperties = async () => {
+    try {
+      setLoading(true);
+      const response = await apiFetch(`${getApiBaseUrl()}/api/listings`);
+      if (response.success) {
+        // Transform the API response to match our Property interface
+        const transformedProperties = response.data.map((listing: any) => ({
+          id: listing.id,
+          title: listing.title,
+          address: listing.address,
+          city: listing.city,
+          state: listing.state,
+          zipCode: listing.zip_code,
+          price: listing.price,
+          type: listing.type.toLowerCase(),
+          bedrooms: listing.bedrooms,
+          bathrooms: listing.bathrooms,
+          area: listing.area,
+          images: parseMaybeJson(listing.images, []),
+          description: listing.description,
+          amenities: parseMaybeJson(listing.amenities, []),
+          landlordId: listing.landlord_id,
+          landlordName: listing.landlord_name,
+          landlordPhone: listing.landlord_phone,
+          coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
+          available: listing.available,
+          leaseType: listing.lease_type,
+          requirements: parseMaybeJson(listing.requirements, []),
+          houseRules: parseMaybeJson(listing.house_rules, []),
+        }));
+        setProperties(transformedProperties);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to fetch properties. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching properties:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch properties. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredProperties = properties.filter(property => {
     const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -166,7 +239,14 @@ const TenantDashboard = () => {
               </div>
             )}
           </Card>
-        ) : (
+        ) : loading ? (
+          <div className="flex items-center justify-center h-[70vh]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading properties...</p>
+            </div>
+          </div>
+        ) : filteredProperties.length > 0 ? (
           /* Enhanced Properties Grid */
           <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredProperties.map((property) => (
@@ -187,6 +267,7 @@ const TenantDashboard = () => {
                     </Badge>
                   </div>
                 </div>
+                
                 <div className="p-6">
                   <h3 className="text-xl font-semibold text-gray-900 mb-3 line-clamp-1 group-hover:text-blue-600 transition-colors">
                     {property.title}
@@ -217,9 +298,7 @@ const TenantDashboard = () => {
               </Card>
             ))}
           </div>
-        )}
-
-        {filteredProperties.length === 0 && (
+        ) : (
           <div className="text-center py-16">
             <div className="text-gray-500 mb-4">
               <Home className="w-20 h-20 mx-auto mb-6 opacity-50" />

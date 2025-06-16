@@ -19,6 +19,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
+import { LandlordChats } from "./components/chat/LandlordChats";
 
 const queryClient = new QueryClient();
 
@@ -92,6 +93,7 @@ const App = () => (
                     <Routes>
                       <Route path="/" element={<LandlordDashboard />} />
                       <Route path="profile" element={<LandlordProfile />} />
+                      <Route path="chats" element={<LandlordChats />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 

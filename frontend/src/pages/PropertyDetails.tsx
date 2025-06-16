@@ -1,33 +1,96 @@
-
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Home, User, ArrowLeft, Calendar, Settings, MessageCircle } from 'lucide-react';
 import { sampleProperties } from '@/data/sampleProperties';
 import Map from '@/components/Map';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { ChatWindow } from '@/components/chat/ChatWindow';
+import { apiFetch, getApiBaseUrl } from '@/utils/api';
+
+// Helper to safely parse images field
+function parseImages(images) {
+  if (Array.isArray(images)) return images;
+  if (typeof images === 'string') {
+    try {
+      const parsed = JSON.parse(images);
+      if (Array.isArray(parsed)) return parsed;
+      return [images];
+    } catch {
+      return [images];
+    }
+  }
+  return [];
+}
+
+// Helper to safely parse array-like fields (requirements, amenities, houseRules)
+function parseArrayField(field) {
+  if (Array.isArray(field)) return field;
+  if (typeof field === 'string') {
+    try {
+      const parsed = JSON.parse(field);
+      if (Array.isArray(parsed)) return parsed;
+      if (field.includes(',')) return field.split(',').map(s => s.trim());
+      return [field];
+    } catch {
+      if (field.includes(',')) return field.split(',').map(s => s.trim());
+      return [field];
+    }
+  }
+  return [];
+}
 
 const PropertyDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [property, setProperty] = useState(null);
+  const [loading, setLoading] = useState(true);
   
-  const property = sampleProperties.find(p => p.id === id);
+  useEffect(() => {
+    const fetchProperty = async () => {
+      try {
+        setLoading(true);
+        const response = await apiFetch(`${getApiBaseUrl()}/api/listings/${id}`);
+        if (response.success) {
+          const data = response.data;
+          setProperty({
+            ...data,
+            houseRules: data.house_rules,
+            landlordName: data.landlord_name,
+            landlordPhone: data.landlord_phone,
+            landlordId: data.landlord_id,
+            zipCode: data.zip_code,
+            leaseType: data.lease_type,
+            images: data.images,
+            amenities: data.amenities,
+            requirements: data.requirements,
+            coordinates: data.coordinates,
+            // Add more mappings as needed
+          });
+        } else {
+          setProperty(null);
+        }
+      } catch (error) {
+        setProperty(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperty();
+  }, [id]);
 
-  if (!property) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">Property not found</h2>
-          <Button onClick={() => navigate('/tenant')} className="bg-gradient-to-r from-blue-600 to-purple-600">
-            Back to Browse
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div>Loading...</div>;
+  if (!property) return <div>Property not found</div>;
+
+  const images = parseImages(property.images);
+  const requirements = parseArrayField(property.requirements);
+  const amenities = parseArrayField(property.amenities);
+  const houseRules = parseArrayField(property.houseRules);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 pb-20">
@@ -56,13 +119,13 @@ const PropertyDetails = () => {
         <div className="mb-8">
           <div className="aspect-[16/10] rounded-xl overflow-hidden mb-4 shadow-lg">
             <img
-              src={property.images[currentImageIndex]}
+              src={images[currentImageIndex]}
               alt={property.title}
               className="w-full h-full object-cover"
             />
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2">
-            {property.images.map((image, index) => (
+            {images.map((image, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentImageIndex(index)}
@@ -124,7 +187,7 @@ const PropertyDetails = () => {
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
               <h2 className="text-xl font-semibold mb-4 text-gray-900">Amenities</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {property.amenities.map((amenity, index) => (
+                {amenities.map((amenity, index) => (
                   <div key={index} className="flex items-center p-2 bg-blue-50 rounded-lg">
                     <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
                     <span className="text-gray-700 font-medium">{amenity}</span>
@@ -137,7 +200,7 @@ const PropertyDetails = () => {
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
               <h2 className="text-xl font-semibold mb-4 text-gray-900">Tenant Requirements</h2>
               <div className="space-y-3">
-                {property.requirements.map((requirement, index) => (
+                {requirements.map((requirement, index) => (
                   <div key={index} className="flex items-center p-2 bg-yellow-50 rounded-lg">
                     <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
                     <span className="text-gray-700">{requirement}</span>
@@ -150,7 +213,7 @@ const PropertyDetails = () => {
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
               <h2 className="text-xl font-semibold mb-4 text-gray-900">House Rules</h2>
               <div className="space-y-3">
-                {property.houseRules.map((rule, index) => (
+                {houseRules.map((rule, index) => (
                   <div key={index} className="flex items-center p-2 bg-red-50 rounded-lg">
                     <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
                     <span className="text-gray-700">{rule}</span>
@@ -176,7 +239,10 @@ const PropertyDetails = () => {
               </div>
               
               <div className="space-y-3">
-                <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-md">
+                <Button 
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-md"
+                  onClick={() => setIsChatOpen(true)}
+                >
                   Send Message
                 </Button>
                 <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
@@ -188,6 +254,20 @@ const PropertyDetails = () => {
                 </Button>
               </div>
             </Card>
+
+            {/* Chat Dialog */}
+            <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
+              <DialogContent className="max-w-2xl h-[80vh] p-0">
+                <ChatWindow 
+                  propertyTitle={property.title}
+                  propertyImage={images[0]}
+                  landlordName={property.landlordName}
+                  landlordId={property.landlordId}
+                  chatRoomId={undefined}
+                  propertyId={property.id}
+                />
+              </DialogContent>
+            </Dialog>
 
             {/* Enhanced Map */}
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">

@@ -42,7 +42,7 @@ export const sampleProperties: Property[] = [
     images: 'https://images.pexels.com/photos/1571453/pexels-photo-1571453.jpeg',
     description: 'Bright studio apartment in the heart of Kensington Market. Walking distance to TTC and local restaurants.',
     amenities: ['WiFi', 'Kitchen', 'Laundry', 'Street Parking'],
-    landlordId: '1',
+    landlordId: 'df9c9599-347f-4ca5-88f5-81c5e7493025',
     landlordName: 'Alex Rodriguez',
     landlordPhone: '(416) 555-0123',
     coordinates: { lat: 43.6544, lng: -79.4047 },

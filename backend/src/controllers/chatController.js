@@ -17,11 +17,20 @@ export const getUserChats = async (req, res) => {
           orderBy: { created_at: "desc" },
           take: 1, // Get only the latest message
         },
+        tenant_profile: {
+          select: { full_name: true }
+        },
       },
       orderBy: { created_at: "desc" },
     });
 
-    res.json(successResponse(chats, "Chats retrieved successfully"));
+    // Add tenantName field to each chat
+    const chatsWithTenantName = chats.map(chat => ({
+      ...chat,
+      tenantName: chat.tenant_profile?.full_name || chat.tenant_id,
+    }));
+
+    res.json(successResponse(chatsWithTenantName, "Chats retrieved successfully"));
   } catch (error) {
     console.error("Error fetching chats:", error);
     res.status(500).json(errorResponse(error));
@@ -73,11 +82,19 @@ export const createChat = async (req, res) => {
       return res.json(successResponse(existingChat, "Chat already exists"));
     }
 
+    // Fetch names from related tables
+    const tenant = await prisma.tenant_profiles.findUnique({ where: { id: tenant_id } });
+    const landlord = await prisma.landlord_profiles.findUnique({ where: { id: landlord_id } });
+    const property = await prisma.listings.findUnique({ where: { id: BigInt(property_id) } });
+
     const chat = await prisma.chats.create({
       data: {
         tenant_id,
         landlord_id,
         property_id,
+        tenant_name: tenant ? tenant.full_name : null,
+        landlord_name: landlord ? landlord.full_name : null,
+        property_name: property ? property.title : null,
       },
     });
 
