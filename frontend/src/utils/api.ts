@@ -1,5 +1,5 @@
 // API Base Configuration
-const getApiBaseUrl = () => {
+export const getApiBaseUrl = () => {
   return import.meta.env.VITE_API_URL || 'http://localhost:3001';
 };
 
@@ -34,7 +34,7 @@ class ApiError extends Error {
 }
 
 // Generic fetch wrapper with error handling
-const apiFetch = async (url: string, options: RequestInit = {}): Promise<any> => {
+export const apiFetch = async (url: string, options: RequestInit = {}): Promise<any> => {
   try {
     const response = await fetch(url, {
       headers: {
@@ -250,4 +250,4 @@ export const healthApi = {
   },
 };
 
-export { ApiError }; 
+export { ApiError };

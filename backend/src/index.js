@@ -6,6 +6,7 @@ import { successResponse } from "./utils/response.js";
 import { supabase } from "./config/supabase.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
+import chatRoutes from "./routes/chat.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -24,8 +25,9 @@ app.use(express.json());
 
 // API routes
 app.use("/api", apiRoutes);
+app.use('/api/chat', chatRoutes);
 
-// Basic health check route (keeping for backward compatibility)
+// Basic health check route
 app.get("/api/health", (req, res) => {
   res.json(
     successResponse(
