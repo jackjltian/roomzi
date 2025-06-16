@@ -22,6 +22,7 @@ const LandlordDashboard = () => {
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
+  const userId = user?.id || '';
 
   useEffect(() => {
     async function fetchProperties() {
@@ -133,10 +134,12 @@ const LandlordDashboard = () => {
         {/* Properties Grid */}
         <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-8">
           {properties.map((property) => (
+            property.landlordId && property.landlordId === userId 
+            &&
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">
                 <img
-                  src={property.images}
+                  src={Array.isArray(property.images) ? property.images[0] : JSON.parse(property.images)[0]}
                   alt={property.title}
                   className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
                 />

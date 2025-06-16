@@ -200,11 +200,11 @@ export const createListing = async (req, res) => {
             requirements,
             houseRules,
             images,
-            landlord_id
+            landlordId
         } = req.body;
 
         // Validate required fields
-        if (!title || !type || !address || !city || !state || !zipCode || !price || !landlord_id) {
+        if (!title || !type || !address || !city || !state || !zipCode || !price || !landlordId) {
             return res.status(400).json({
                 error: 'Missing required fields'
             });
@@ -218,18 +218,18 @@ export const createListing = async (req, res) => {
                 address,
                 city,
                 state,
-                zip_code: zipCode,
+                zipCode,
                 bedrooms,
                 bathrooms,
                 area,
                 price,
                 description,
-                lease_type: leaseType,
+                leaseType,
                 amenities,
                 requirements,
-                house_rules: houseRules,
+                houseRules,
                 images,
-                landlord_id,
+                landlordId,
                 available: true,
             }])
             .select();

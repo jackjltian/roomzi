@@ -10,7 +10,7 @@ export interface Property {
   bedrooms: number;
   bathrooms: number;
   area: number;
-  images: string;
+  images: string[];
   description: string;
   amenities: string[];
   landlordId: string;
@@ -39,7 +39,10 @@ export const sampleProperties: Property[] = [
     bedrooms: 1,
     bathrooms: 1,
     area: 450,
-    images: 'https://images.pexels.com/photos/1571453/pexels-photo-1571453.jpeg',
+    images: [
+      'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg',
+      'https://images.pexels.com/photos/1571453/pexels-photo-1571453.jpeg'
+    ],
     description: 'Bright studio apartment in the heart of Kensington Market. Walking distance to TTC and local restaurants.',
     amenities: ['WiFi', 'Kitchen', 'Laundry', 'Street Parking'],
     landlordId: '1',
@@ -63,7 +66,10 @@ export const sampleProperties: Property[] = [
     bedrooms: 2,
     bathrooms: 1,
     area: 850,
-    images: 'https://images.pexels.com/photos/1571459/pexels-photo-1571459.jpeg',
+    images: [
+      'https://images.pexels.com/photos/1571458/pexels-photo-1571458.jpeg',
+      'https://images.pexels.com/photos/1571459/pexels-photo-1571459.jpeg'
+    ],
     description: 'Spacious 2-bedroom apartment in Queen West. Recently renovated with modern appliances.',
     amenities: ['WiFi', 'Dishwasher', 'In-unit laundry', 'Bike storage'],
     landlordId: '2',
@@ -87,7 +93,10 @@ export const sampleProperties: Property[] = [
     bedrooms: 3,
     bathrooms: 2,
     area: 1600,
-    images: 'https://images.pexels.com/photos/1571461/pexels-photo-1571461.jpeg',
+    images: [
+      'https://images.pexels.com/photos/1571461/pexels-photo-1571461.jpeg',
+      'https://images.pexels.com/photos/1571462/pexels-photo-1571462.jpeg'
+    ],
     description: 'Charming Victorian house in Leslieville. Large backyard and updated kitchen.',
     amenities: ['WiFi', 'Washer/Dryer', 'Parking', 'Garden'],
     landlordId: '3',
