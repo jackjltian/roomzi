@@ -93,7 +93,7 @@ export const createTenant = async (req, res) => {
         .status(400)
         .json(errorResponse(new Error("Tenant ID already exists"), 400));
     }
-
+    
     res.status(500).json(errorResponse(error));
   }
 };

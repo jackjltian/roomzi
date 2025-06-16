@@ -1,14 +1,20 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, MessageCircle, Home, Calendar, User } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Home, Calendar, User, X } from 'lucide-react';
+import { ChatWindow } from '@/components/chat/ChatWindow';
 
 const TenantMatches = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('matches');
+  const [selectedChat, setSelectedChat] = useState<{
+    propertyTitle: string;
+    propertyImage: string;
+    landlordName: string;
+    landlordImage?: string;
+  } | null>(null);
 
   const matches = [
     {
@@ -39,6 +45,14 @@ const TenantMatches = () => {
       propertyImage: "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=300&h=200&fit=crop"
     }
   ];
+
+  const handleReply = (match: typeof matches[0]) => {
+    setSelectedChat({
+      propertyTitle: match.propertyTitle,
+      propertyImage: match.propertyImage,
+      landlordName: match.landlordName,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -119,7 +133,11 @@ const TenantMatches = () => {
                     </div>
                   </div>
                   <div className="flex gap-2 mt-4">
-                    <Button size="sm" className="roomzi-gradient flex-1">
+                    <Button 
+                      size="sm" 
+                      className="roomzi-gradient flex-1"
+                      onClick={() => handleReply(match)}
+                    >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Reply
                     </Button>
@@ -178,6 +196,28 @@ const TenantMatches = () => {
           </div>
         )}
       </div>
+
+      {/* Chat Window */}
+      {selectedChat && (
+        <div className="fixed bottom-4 right-4 z-50 w-[400px]">
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute -top-2 -right-2 z-10 bg-white rounded-full shadow-md hover:bg-gray-100"
+              onClick={() => setSelectedChat(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <ChatWindow
+              propertyTitle={selectedChat.propertyTitle}
+              propertyImage={selectedChat.propertyImage}
+              landlordName={selectedChat.landlordName}
+              landlordImage={selectedChat.landlordImage}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

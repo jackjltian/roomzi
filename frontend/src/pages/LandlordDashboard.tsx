@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,6 +61,15 @@ const LandlordDashboard = () => {
                 <User className="w-4 h-4 mr-2" />
                 Profile
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/landlord/chats')}
+                className="hover:bg-blue-50"
+              >
+                <MessageCircle className="w-4 h-4 mr-2" />
+                Messages
+              </Button>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -78,9 +86,11 @@ const LandlordDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {userName}!</h2>
-          <p className="text-gray-600">Manage your properties and connect with tenants</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {userName}!</h2>
+            <p className="text-gray-600">Manage your properties and connect with tenants</p>
+          </div>
         </div>
 
         {/* Stats Overview */}
