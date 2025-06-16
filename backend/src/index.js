@@ -4,6 +4,7 @@ import cors from "cors";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { successResponse } from "./utils/response.js";
 import { supabase } from "./config/supabase.js";
+import { landlordRouter } from "./routes/index.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
 import chatRoutes from "./routes/chat.js";
@@ -23,9 +24,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Routes
+app.use('/api/landlord', landlordRouter);
+
 // API routes
 app.use("/api", apiRoutes);
 app.use('/api/chat', chatRoutes);
+
+// Routes
+app.use('/api/landlord', landlordRouter);
 
 // Basic health check route
 app.get("/api/health", (req, res) => {

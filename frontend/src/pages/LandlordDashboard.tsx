@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 
 const LandlordDashboard = () => {
-  const [properties] = useState<Property[]>(sampleProperties);
+  const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
 
@@ -21,6 +21,25 @@ const LandlordDashboard = () => {
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
+  const userId = user?.id || '';
+
+  useEffect(() => {
+    async function fetchProperties() {
+      const response = await fetch('http://localhost:3001/api/landlord/get-listings', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setProperties(data);
+      }
+    }
+
+    fetchProperties();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
@@ -125,10 +144,12 @@ const LandlordDashboard = () => {
         {/* Properties Grid */}
         <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-8">
           {properties.map((property) => (
+            property.landlord_id === userId
+            &&
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">
                 <img
-                  src={property.images[0]}
+                  src={Array.isArray(property.images) ? property.images[0] : JSON.parse(property.images)[0]}
                   alt={property.title}
                   className="w-full h-full object-cover transition-transform duration-300 hover:scale-110"
                 />

@@ -7,8 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Home, Image } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/context/AuthContext';
 
 const CreateListing = () => {
+  const { user } = useAuth();
+
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     title: '',
@@ -25,7 +29,9 @@ const CreateListing = () => {
     leaseType: 'long-term',
     amenities: [],
     requirements: '',
-    houseRules: ''
+    houseRules: '',
+    images: [] as File[],
+    landlordId: user.id
   });
 
   const propertyTypes = [
@@ -56,11 +62,105 @@ const CreateListing = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const newFiles = Array.from(files);
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, ...newFiles]
+      }));
+    }
+  };
+
+  const handleDeleteFile = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
+  };
+
+  const uploadImages = async (files: File[]) => {
+    const imageUrls: string[] = [];
+    
+    for (let file of files) {
+      const path = `images/${Date.now()}_${file.name}`;
+      console.log("Uploading image to path:", path);
+
+      // Check if buckets exist
+      const { data: buckets, error: bucketsError } = await supabase
+        .storage
+        .listBuckets();
+
+      if (bucketsError) {
+        console.error(bucketsError);
+        throw new Error("Failed to check storage buckets");
+      }
+
+      // Check if listings bucket exists
+      const listingsBucket = buckets.find(b => b.name === 'listings');
+      if (!listingsBucket) {
+        throw new Error("Storage bucket 'listings' does not exist.");
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from('listings')
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error(uploadError);
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from('listings').getPublicUrl(path);
+      imageUrls.push(data.publicUrl);
+    }
+
+    return imageUrls;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Creating listing:', formData);
-    // Here you would typically send the data to your backend
-    navigate('/landlord');
+
+    try {
+      let imageUrls = [];
+
+      if (formData.images.length > 0) {
+        imageUrls = await uploadImages(formData.images);
+      }
+
+      const payload = {
+        ...formData,
+        images: imageUrls
+      };
+      
+      console.log('Creating listing:', payload);
+
+      const response = await fetch('http://localhost:3001/api/landlord/create-listing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create listing.');
+      }
+
+      const result = await response.json();
+      console.log('Listing created successfully:', result);
+
+      navigate('/landlord');
+    } catch (error) {
+      console.error('Error creating listing:', error);
+      alert(error.message || 'Failed to create listing.');
+    }
   };
 
   return (
@@ -301,9 +401,42 @@ const CreateListing = () => {
               <Image className="w-12 h-12 mx-auto mb-4 text-gray-400" />
               <p className="text-gray-600 mb-2">Upload property photos</p>
               <p className="text-sm text-gray-500">Drag and drop or click to browse</p>
-              <Button type="button" variant="outline" className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4"
+                onClick={() => document.getElementById('file-upload')?.click()}
+              >
                 Choose Files
               </Button>
+              <input
+                id="file-upload"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleUploadFile}
+                style={{ display: 'none' }}
+              />
+              <div className="mt-4">
+                {formData.images.length > 0 && (
+                  <ul className="list-disc pl-5">
+                    {formData.images.map((file, index) => (
+                      <li key={index} className="flex justify-center items-center text-gray-700">
+                        <span>{file.name}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteFile(index)}
+                          className="ml-4 text-red-500"
+                        >
+                          X
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </Card>
 

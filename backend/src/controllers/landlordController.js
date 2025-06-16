@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
+import { supabase } from "../config/supabase.js";
 
 // Get all landlords
 export const getLandlords = async (req, res) => {
@@ -71,18 +72,8 @@ export const createLandlord = async (req, res) => {
   try {
     const { id, full_name, email, phone, image_url, address } = req.body;
 
-    // Use upsert to handle existing profiles gracefully
-    const landlord = await prisma.landlord_profiles.upsert({
-      where: { id },
-      update: {
-        full_name,
-        email,
-        phone,
-        image_url,
-        address,
-        updated_at: new Date(),
-      },
-      create: {
+    const landlord = await prisma.landlord_profiles.create({
+      data: {
         id,
         full_name,
         email,
@@ -92,16 +83,18 @@ export const createLandlord = async (req, res) => {
       },
     });
 
-    // Return 200 for updates, 201 for new creations
-    const statusCode = landlord.created_at === landlord.updated_at ? 201 : 200;
-    const message =
-      statusCode === 201
-        ? "Landlord created successfully"
-        : "Landlord profile updated successfully";
-
-    res.status(statusCode).json(successResponse(landlord, message));
+    res
+      .status(201)
+      .json(successResponse(landlord, "Landlord created successfully"));
   } catch (error) {
-    console.error("Error creating/updating landlord:", error);
+    console.error("Error creating landlord:", error);
+
+    // Handle unique constraint violation
+    if (error.code === "P2002") {
+      return res
+        .status(400)
+        .json(errorResponse(new Error("Landlord ID already exists"), 400));
+    }
     res.status(500).json(errorResponse(error));
   }
 };
@@ -185,3 +178,98 @@ export const getLandlordListings = async (req, res) => {
     res.status(500).json(errorResponse(error));
   }
 };
+
+export const createListing = async (req, res) => {
+    try {
+        console.log("incoming data", req.body);
+        const {
+            title,
+            type,
+            address,
+            city,
+            state,
+            zipCode,
+            bedrooms,
+            bathrooms,
+            area,
+            price,
+            description,
+            leaseType,
+            amenities,
+            requirements,
+            houseRules,
+            images,
+            landlordId
+        } = req.body;
+
+        // Validate required fields
+        if (!title || !type || !address || !city || !state || !zipCode || !price || !landlordId) {
+            return res.status(400).json({
+                error: 'Missing required fields'
+            });
+        }
+
+        const { data, error } = await supabase
+            .from('listings')
+            .insert([{
+                title,
+                type,
+                address,
+                city,
+                state,
+                zip_code: zipCode,
+                bedrooms,
+                bathrooms,
+                area,
+                price,
+                description,
+                lease_type: leaseType,
+                amenities,
+                requirements,
+                house_rules: houseRules,
+                images,
+                landlord_id: landlordId,
+                available: true,
+            }])
+            .select();
+
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ 
+                error: 'An error occurred while creating the listing.'
+            });
+        }
+
+        res.status(201).json({ 
+            message: 'The listing has been created.', 
+            listing: data[0] 
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: 'An error occurred while creating the listing.'
+        });
+    }
+}
+
+export const getListings = async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('listings')
+            .select('*');
+        
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ 
+                error: 'An error occurred while getting the listings.'
+            });
+        }
+
+        res.status(200).json(data);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: 'An error occurred while getting the listings.'
+        });
+    }
+}

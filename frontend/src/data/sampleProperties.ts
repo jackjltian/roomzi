@@ -4,7 +4,7 @@ export interface Property {
   address: string;
   city: string;
   state: string;
-  zipCode: string;
+  zip_code: string;
   price: number;
   type: 'room' | 'apartment' | 'house' | 'condo';
   bedrooms: number;
@@ -13,17 +13,17 @@ export interface Property {
   images: string[];
   description: string;
   amenities: string[];
-  landlordId: string;
-  landlordName: string;
-  landlordPhone: string;
+  landlord_id: string;
+  landlord_name: string;
+  landlord_phone: string;
   coordinates: {
     lat: number;
     lng: number;
   };
   available: boolean;
-  leaseType: 'short-term' | 'long-term';
+  lease_type: 'short-term' | 'long-term';
   requirements: string[];
-  houseRules: string[];
+  house_rules: string[];
 }
 
 export const sampleProperties: Property[] = [
@@ -33,7 +33,7 @@ export const sampleProperties: Property[] = [
     address: '123 Augusta Ave',
     city: 'Toronto',
     state: 'ON',
-    zipCode: 'M5T 2L4',
+    zip_code: 'M5T 2L4',
     price: 1800,
     type: 'room',
     bedrooms: 1,
@@ -45,14 +45,14 @@ export const sampleProperties: Property[] = [
     ],
     description: 'Bright studio apartment in the heart of Kensington Market. Walking distance to TTC and local restaurants.',
     amenities: ['WiFi', 'Kitchen', 'Laundry', 'Street Parking'],
-    landlordId: 'df9c9599-347f-4ca5-88f5-81c5e7493025',
-    landlordName: 'Alex Rodriguez',
-    landlordPhone: '(416) 555-0123',
+    landlord_id: 'df9c9599-347f-4ca5-88f5-81c5e7493025',
+    landlord_name: 'Alex Rodriguez',
+    landlord_phone: '(416) 555-0123',
     coordinates: { lat: 43.6544, lng: -79.4047 },
     available: true,
-    leaseType: 'long-term',
+    lease_type: 'long-term',
     requirements: ['Credit check', 'Income verification', 'Security deposit'],
-    houseRules: ['No smoking', 'No pets', 'Quiet hours 10pm-7am']
+    house_rules: ['No smoking', 'No pets', 'Quiet hours 10pm-7am']
   },
   {
     id: '2',
@@ -60,7 +60,7 @@ export const sampleProperties: Property[] = [
     address: '456 Queen St W',
     city: 'Toronto',
     state: 'ON',
-    zipCode: 'M5V 2B2',
+    zip_code: 'M5V 2B2',
     price: 2800,
     type: 'apartment',
     bedrooms: 2,
@@ -72,14 +72,14 @@ export const sampleProperties: Property[] = [
     ],
     description: 'Spacious 2-bedroom apartment in Queen West. Recently renovated with modern appliances.',
     amenities: ['WiFi', 'Dishwasher', 'In-unit laundry', 'Bike storage'],
-    landlordId: '2',
-    landlordName: 'Maria Garcia',
-    landlordPhone: '(416) 555-0456',
+    landlord_id: '2',
+    landlord_name: 'Maria Garcia',
+    landlord_phone: '(416) 555-0456',
     coordinates: { lat: 43.6487, lng: -79.3975 },
     available: true,
-    leaseType: 'long-term',
+    lease_type: 'long-term',
     requirements: ['Credit score 650+', 'Income 3x rent', 'References'],
-    houseRules: ['No smoking', 'Pets considered', 'Renters insurance required']
+    house_rules: ['No smoking', 'Pets considered', 'Renters insurance required']
   },
   {
     id: '3',
@@ -87,7 +87,7 @@ export const sampleProperties: Property[] = [
     address: '789 Queen St E',
     city: 'Toronto',
     state: 'ON',
-    zipCode: 'M4M 1H8',
+    zip_code: 'M4M 1H8',
     price: 3800,
     type: 'house',
     bedrooms: 3,
@@ -99,13 +99,13 @@ export const sampleProperties: Property[] = [
     ],
     description: 'Charming Victorian house in Leslieville. Large backyard and updated kitchen.',
     amenities: ['WiFi', 'Washer/Dryer', 'Parking', 'Garden'],
-    landlordId: '3',
-    landlordName: 'David Kim',
-    landlordPhone: '(416) 555-0789',
+    landlord_id: '3',
+    landlord_name: 'David Kim',
+    landlord_phone: '(416) 555-0789',
     coordinates: { lat: 43.6617, lng: -79.3407 },
     available: true,
-    leaseType: 'long-term',
+    lease_type: 'long-term',
     requirements: ['Credit check', 'Income verification', 'Security deposit'],
-    houseRules: ['No smoking', 'Pets allowed with deposit', 'Garden maintenance']
+    house_rules: ['No smoking', 'Pets allowed with deposit', 'Garden maintenance']
   }
 ];
