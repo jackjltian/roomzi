@@ -414,7 +414,6 @@ const CreateListing = () => {
                 type="file"
                 accept="image/*"
                 multiple
-                // onChange={(e) => handleInputChange('images', Array.from(e.target.files || []))}
                 onChange={handleUploadFile}
                 style={{ display: 'none' }}
               />

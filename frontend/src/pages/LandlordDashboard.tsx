@@ -144,7 +144,7 @@ const LandlordDashboard = () => {
         {/* Properties Grid */}
         <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-8">
           {properties.map((property) => (
-            property.landlordId && property.landlordId === userId 
+            property.landlord_id === userId
             &&
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">

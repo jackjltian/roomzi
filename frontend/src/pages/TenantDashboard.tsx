@@ -54,7 +54,7 @@ const TenantDashboard = () => {
           address: listing.address,
           city: listing.city,
           state: listing.state,
-          zipCode: listing.zip_code,
+          zipCode: listing.zipCode,
           price: listing.price,
           type: listing.type.toLowerCase(),
           bedrooms: listing.bedrooms,
@@ -63,14 +63,14 @@ const TenantDashboard = () => {
           images: parseMaybeJson(listing.images, []),
           description: listing.description,
           amenities: parseMaybeJson(listing.amenities, []),
-          landlordId: listing.landlord_id,
-          landlordName: listing.landlord_name,
-          landlordPhone: listing.landlord_phone,
+          landlordId: listing.landlordId,
+          landlordName: listing.landlordName,
+          landlordPhone: listing.landlordPhone,
           coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
           available: listing.available,
-          leaseType: listing.lease_type,
+          leaseType: listing.leaseType,
           requirements: parseMaybeJson(listing.requirements, []),
-          houseRules: parseMaybeJson(listing.house_rules, []),
+          houseRules: parseMaybeJson(listing.houseRules, []),
         }));
         setProperties(transformedProperties);
       } else {
