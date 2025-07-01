@@ -102,4 +102,25 @@
   .roomzi-gradient-light {
     background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   }
+
+  .text-roomzi-blue {
+    color: #2563eb;
+  }
+
+  .profile-avatar-container {
+    position: relative;
+    display: inline-block;
+  }
+
+  .profile-upload-button {
+    @apply absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0 bg-roomzi-blue hover:bg-blue-700 text-white;
+  }
+
+  .profile-edit-mode input {
+    @apply border-roomzi-blue focus:ring-roomzi-blue;
+  }
+
+  .profile-readonly input {
+    @apply bg-gray-50 border-gray-200;
+  }
 }

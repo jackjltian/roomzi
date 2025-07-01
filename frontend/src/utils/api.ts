@@ -274,4 +274,95 @@ export const healthApi = {
   },
 };
 
+// Image upload utility functions
+export const imageUtils = {
+  /**
+   * Upload profile image to Supabase storage
+   */
+  uploadProfileImage: async (file: File, userId: string): Promise<string> => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Please upload an image file.');
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error('Please upload an image smaller than 5MB.');
+    }
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}_${Date.now()}.${fileExt}`;
+    const filePath = `profile-images/${fileName}`;
+
+    // Check if buckets exist
+    const { data: buckets, error: bucketsError } = await supabase
+      .storage
+      .listBuckets();
+
+    if (bucketsError) {
+      throw new Error("Failed to check storage buckets");
+    }
+
+    // Check if profile-images bucket exists
+    const profileBucket = buckets.find(b => b.name === 'profile-images');
+    if (!profileBucket) {
+      // Create the bucket if it doesn't exist
+      const { error: createBucketError } = await supabase
+        .storage
+        .createBucket('profile-images', {
+          public: true,
+          allowedMimeTypes: ['image/*'],
+          fileSizeLimit: 5242880 // 5MB
+        });
+      
+      if (createBucketError) {
+        console.error('Error creating profile-images bucket:', createBucketError);
+        throw new Error("Failed to create storage bucket for profile images");
+      }
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from('profile-images')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from('profile-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  },
+
+  /**
+   * Delete profile image from Supabase storage
+   */
+  deleteProfileImage: async (imageUrl: string): Promise<void> => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    // Extract file path from URL
+    const urlParts = imageUrl.split('/');
+    const bucketIndex = urlParts.findIndex(part => part === 'profile-images');
+    if (bucketIndex === -1) return;
+    
+    const filePath = urlParts.slice(bucketIndex + 1).join('/');
+    
+    const { error } = await supabase.storage
+      .from('profile-images')
+      .remove([`profile-images/${filePath}`]);
+
+    if (error) {
+      console.error('Error deleting image:', error);
+      // Don't throw error as this is not critical
+    }
+  }
+};
+
 export { ApiError };
