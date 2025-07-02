@@ -20,6 +20,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
+import Payments from "./pages/PaymentHistory";
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,7 @@ const App = () => (
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
                       <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="payments" element={<Payments />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
