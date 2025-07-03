@@ -1,34 +1,36 @@
-const prisma = require('../config/prisma');
+import { prisma } from "../config/prisma.js";
 
-// Create a new payment
-exports.createPayment = async (req, res) => {
+// Create a new payment request
+export const createPayment = async (req, res) => {
   try {
     const { tenantId, amount } = req.body;
     const proofUrl = req.file ? `/uploads/${req.file.filename}` : null;
-    const payment = await prisma.payment.create({
+    const paymentRequest = await prisma.paymentRequest.create({
       data: {
-        tenantId: Number(tenantId),
+        tenantId: tenantId,
         amount: parseFloat(amount),
-        status: 'Pending',
+        status: "Pending",
         proofUrl,
       },
     });
-    res.status(201).json({ success: true, payment });
+    res.status(201).json({ success: true, payment: paymentRequest });
   } catch (err) {
+    console.error("Error creating payment request:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// Get all payments for a tenant
-exports.getPaymentsByTenant = async (req, res) => {
+// Get all payment requests for a tenant
+export const getPaymentsByTenant = async (req, res) => {
   try {
     const { tenantId } = req.params;
-    const payments = await prisma.payment.findMany({
-      where: { tenantId: Number(tenantId) },
-      orderBy: { date: 'desc' },
+    const paymentRequests = await prisma.paymentRequest.findMany({
+      where: { tenantId: tenantId },
+      orderBy: { date: "desc" },
     });
-    res.json({ success: true, payments });
+    res.json({ success: true, payments: paymentRequests });
   } catch (err) {
+    console.error("Error fetching payment requests:", err);
     res.status(500).json({ success: false, error: err.message });
   }
-}; 
+};

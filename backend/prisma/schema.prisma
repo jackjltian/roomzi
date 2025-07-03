@@ -87,12 +87,14 @@ model tenant_profiles {
 }
 
 //for payment history
-model Payment {
+model PaymentRequest {
   id         Int      @id @default(autoincrement())
   tenantId   String   
   amount     Float
   date       DateTime @default(now())
   status     String   // e.g., "Pending", "Approved", "Rejected"
-  proofUrl   String   // URL or path to the uploaded file
+  proofUrl   String?  // URL or path to the uploaded file (make it optional)
   // Add relations if needed
+  
+  @@map("payment_requests")
 }

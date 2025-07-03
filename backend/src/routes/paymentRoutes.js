@@ -1,14 +1,18 @@
-const express = require('express');
-const multer = require('multer');
-const { createPayment, getPaymentsByTenant } = require('../controllers/paymentController');
+import express from "express";
+import multer from "multer";
+import {
+  createPayment,
+  getPaymentsByTenant,
+} from "../controllers/paymentController.js";
+
 const router = express.Router();
 
-const upload = multer({ dest: 'uploads/' }); // You can configure storage as needed
+const upload = multer({ dest: "uploads/" }); // You can configure storage as needed
 
 // Create a new payment (with file upload)
-router.post('/', upload.single('proof'), createPayment);
+router.post("/", upload.single("proof"), createPayment);
 
 // Get all payments for a tenant
-router.get('/tenant/:tenantId', getPaymentsByTenant);
+router.get("/tenant/:tenantId", getPaymentsByTenant);
 
-export default router; 
+export default router;

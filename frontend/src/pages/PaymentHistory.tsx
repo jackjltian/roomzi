@@ -68,31 +68,72 @@ const Payments = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const formData = new FormData();
-    formData.append('tenantId', tenantId);
-    formData.append('amount', amount);
-    if (file) formData.append('proof', file);
+    
+    // Debug logging
+    console.log('Submitting payment with:', { tenantId, amount, file: file?.name });
+    
+    if (!tenantId) {
+      alert('User not found. Please log in again.');
+      setSubmitting(false);
+      return;
+    }
+    
+    try {
+      const formData = new FormData();
+      formData.append('tenantId', tenantId);
+      formData.append('amount', amount);
+      if (file) formData.append('proof', file);
 
-    const response = await fetch('/api/payments', {
-      method: 'POST',
-      body: formData,
-    });
+      console.log('Making request to:', 'http://localhost:3001/api/payments');
+      
+      const response = await fetch('http://localhost:3001/api/payments', {
+        method: 'POST',
+        body: formData,
+      });
 
-    setSubmitting(false);
-    setShowForm(false);
-    setAmount('');
-    setFile(null);
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
 
-    if (response.ok) {
-      alert("Payment request successfully submitted. Waiting for landlord's approval.");
-      // Re-fetch payments from backend
-      fetch(`/api/payments/tenant/${tenantId}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) setPayments(data.payments);
-        });
-    } else {
-      alert('Failed to submit payment.');
+      if (response.ok) {
+        try {
+          const result = await response.json();
+          console.log('Success result:', result);
+          alert("Payment request successfully submitted. Waiting for landlord's approval.");
+          // Re-fetch payments from backend
+          fetch(`http://localhost:3001/api/payments/tenant/${tenantId}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.success) setPayments(data.payments);
+            })
+            .catch(err => console.error('Error fetching payments:', err));
+        } catch (jsonError) {
+          console.error('JSON parsing error:', jsonError);
+          // Even if JSON parsing fails, the payment was likely successful
+          alert("Payment request submitted successfully! (Response parsing issue)");
+        }
+      } else {
+        try {
+          const errorData = await response.json();
+          console.error('Payment submission failed:', errorData);
+          alert(`Failed to submit payment: ${errorData.error || 'Unknown error'}`);
+        } catch (jsonError) {
+          console.error('Error response JSON parsing failed:', jsonError);
+          alert(`Failed to submit payment. Server returned status: ${response.status}`);
+        }
+      }
+    } catch (error) {
+      console.error('Network error details:', error);
+      // Check if it's a network error or other type
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        alert('Failed to submit payment. Please check your connection.');
+      } else {
+        alert('An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+      setShowForm(false);
+      setAmount('');
+      setFile(null);
     }
   };
 
