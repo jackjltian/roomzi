@@ -6,19 +6,6 @@ import { supabase } from "../config/supabase.js";
 export const getLandlords = async (req, res) => {
   try {
     const landlords = await prisma.landlord_profiles.findMany({
-      include: {
-        listings: {
-          where: { available: true },
-          select: {
-            id: true,
-            title: true,
-            price: true,
-            city: true,
-            state: true,
-            available: true,
-          },
-        },
-      },
       orderBy: { created_at: "desc" },
     });
 
@@ -36,22 +23,6 @@ export const getLandlordById = async (req, res) => {
 
     const landlord = await prisma.landlord_profiles.findUnique({
       where: { id },
-      include: {
-        listings: {
-          select: {
-            id: true,
-            title: true,
-            price: true,
-            city: true,
-            state: true,
-            bedrooms: true,
-            bathrooms: true,
-            available: true,
-            created_at: true,
-          },
-          orderBy: { created_at: "desc" },
-        },
-      },
     });
 
     if (!landlord) {
@@ -70,7 +41,8 @@ export const getLandlordById = async (req, res) => {
 // Create new landlord (with upsert functionality)
 export const createLandlord = async (req, res) => {
   try {
-    const { id, full_name, email, phone, image_url, address } = req.body;
+    const { id, full_name, email, phone, image_url, address, documents } =
+      req.body;
 
     // Use upsert to handle both create and update scenarios
     const landlord = await prisma.landlord_profiles.upsert({
@@ -82,6 +54,7 @@ export const createLandlord = async (req, res) => {
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
+        ...(documents !== undefined && { documents }),
         updated_at: new Date(),
       },
       create: {
@@ -91,6 +64,7 @@ export const createLandlord = async (req, res) => {
         phone,
         image_url,
         address,
+        documents: documents || [],
       },
     });
 
@@ -112,7 +86,7 @@ export const createLandlord = async (req, res) => {
 export const updateLandlord = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, email, phone, image_url, address } = req.body;
+    const { full_name, email, phone, image_url, address, documents } = req.body;
 
     const landlord = await prisma.landlord_profiles.update({
       where: { id },
@@ -122,6 +96,7 @@ export const updateLandlord = async (req, res) => {
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
+        ...(documents !== undefined && { documents }),
         updated_at: new Date(),
       },
     });

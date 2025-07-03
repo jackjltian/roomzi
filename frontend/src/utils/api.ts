@@ -11,6 +11,7 @@ export interface ProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+  documents?: string[];
 }
 
 export interface ApiResponse<T = any> {
@@ -74,6 +75,7 @@ const createProfileData = (userId: string, email: string): ProfileData => {
     phone: null,
     image_url: null,
     address: null,
+    documents: [],
   };
 };
 
@@ -362,6 +364,127 @@ export const imageUtils = {
       console.error('Error deleting image:', error);
       // Don't throw error as this is not critical
     }
+  }
+};
+
+// Document upload utility functions
+export const documentUtils = {
+  /**
+   * Upload document to Supabase storage
+   */
+  uploadDocument: async (file: File, userId: string, documentType: string): Promise<string> => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    // Validate file type (allow common document formats)
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/jpg', 
+      'image/png',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    if (!allowedTypes.includes(file.type)) {
+      throw new Error('Please upload a PDF, image, or Word document.');
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('Please upload a document smaller than 10MB.');
+    }
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}_${documentType}_${Date.now()}.${fileExt}`;
+    const filePath = `documents/${fileName}`;
+
+    // Check if buckets exist
+    const { data: buckets, error: bucketsError } = await supabase
+      .storage
+      .listBuckets();
+
+    if (bucketsError) {
+      throw new Error("Failed to check storage buckets");
+    }
+
+    // Check if documents bucket exists
+    const documentsBucket = buckets.find(b => b.name === 'documents');
+    if (!documentsBucket) {
+      // Create the bucket if it doesn't exist
+      const { error: createBucketError } = await supabase
+        .storage
+        .createBucket('documents', {
+          public: false, // Documents should be private
+          allowedMimeTypes: allowedTypes,
+          fileSizeLimit: 10485760 // 10MB
+        });
+      
+      if (createBucketError) {
+        console.error('Error creating documents bucket:', createBucketError);
+        throw new Error("Failed to create storage bucket for documents");
+      }
+    }
+
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    // Return the file path (not public URL since it's private)
+    return filePath;
+  },
+
+  /**
+   * Get signed URL for document viewing
+   */
+  getDocumentUrl: async (filePath: string): Promise<string> => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+    if (error) {
+      throw error;
+    }
+
+    return data.signedUrl;
+  },
+
+  /**
+   * Delete document from Supabase storage
+   */
+  deleteDocument: async (filePath: string): Promise<void> => {
+    const { supabase } = await import('@/lib/supabaseClient');
+    
+    const { error } = await supabase.storage
+      .from('documents')
+      .remove([filePath]);
+
+    if (error) {
+      console.error('Error deleting document:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Extract document type and filename from file path
+   */
+  parseDocumentPath: (filePath: string) => {
+    const fileName = filePath.split('/').pop() || '';
+    const parts = fileName.split('_');
+    if (parts.length >= 3) {
+      const documentType = parts[1];
+      const originalName = parts.slice(2).join('_');
+      return { documentType, originalName };
+    }
+    return { documentType: 'unknown', originalName: fileName };
   }
 };
 

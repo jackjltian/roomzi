@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, User, Camera, FileText, Settings, UserCheck, Loader2, Upload, Save, X } from 'lucide-react';
+import { ArrowLeft, User, Camera, FileText, Settings, UserCheck, Loader2, Upload, Save, X, Download, Trash2, Plus } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { tenantApi, landlordApi, ApiError, imageUtils } from '@/utils/api';
+import { tenantApi, landlordApi, ApiError, imageUtils, documentUtils } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
 
 interface LandlordProfileData {
@@ -19,6 +19,7 @@ interface LandlordProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+  documents?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -33,6 +34,7 @@ const LandlordProfile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
   const [profileData, setProfileData] = useState<LandlordProfileData | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({
@@ -41,6 +43,7 @@ const LandlordProfile = () => {
     phone: '',
     address: '',
   });
+  const [documents, setDocuments] = useState<string[]>([]);
 
   // Fetch landlord profile data
   useEffect(() => {
@@ -53,6 +56,7 @@ const LandlordProfile = () => {
         
         if (result.success && result.data) {
           setProfileData(result.data.data);
+          setDocuments(result.data.data.documents || []);
           setFormData({
             full_name: result.data.data.full_name || '',
             email: result.data.data.email || '',
@@ -64,6 +68,7 @@ const LandlordProfile = () => {
           const createResult = await landlordApi.create(user.id, user.email || '');
           if (createResult.success && createResult.data) {
             setProfileData(createResult.data.data);
+            setDocuments(createResult.data.data.documents || []);
             setFormData({
               full_name: user.user_metadata?.full_name || '',
               email: user.email || '',
@@ -198,6 +203,101 @@ const LandlordProfile = () => {
       });
     } finally {
       setUploadingImage(false);
+    }
+  };
+
+  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>, documentType: string) => {
+    const file = event.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    setUploadingDocument(true);
+    
+    try {
+      // Upload document using utility function
+      const documentPath = await documentUtils.uploadDocument(file, user.id, documentType);
+
+      // Update profile with new document
+      const newDocuments = [...documents, documentPath];
+      const updateResult = await landlordApi.update(user.id, {
+        documents: newDocuments
+      });
+
+      if (updateResult.success) {
+        setDocuments(newDocuments);
+        setProfileData(prev => prev ? {
+          ...prev,
+          documents: newDocuments
+        } : null);
+        
+        toast({
+          title: "Success",
+          description: `${documentType.replace('-', ' ')} document uploaded successfully!`,
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to upload document. Please try again.";
+      toast({
+        title: "Upload Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingDocument(false);
+      // Reset the input
+      event.target.value = '';
+    }
+  };
+
+  const handleDocumentDelete = async (documentPath: string) => {
+    if (!user?.id) return;
+
+    try {
+      // Delete from storage
+      await documentUtils.deleteDocument(documentPath);
+
+      // Update profile
+      const newDocuments = documents.filter(doc => doc !== documentPath);
+      const updateResult = await landlordApi.update(user.id, {
+        documents: newDocuments
+      });
+
+      if (updateResult.success) {
+        setDocuments(newDocuments);
+        setProfileData(prev => prev ? {
+          ...prev,
+          documents: newDocuments
+        } : null);
+        
+        toast({
+          title: "Success",
+          description: "Document deleted successfully!",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete document. Please try again.";
+      toast({
+        title: "Delete Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDocumentView = async (documentPath: string) => {
+    try {
+      const signedUrl = await documentUtils.getDocumentUrl(documentPath);
+      window.open(signedUrl, '_blank');
+    } catch (error) {
+      console.error('Error viewing document:', error);
+      toast({
+        title: "View Failed",
+        description: "Failed to open document. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -483,24 +583,235 @@ const LandlordProfile = () => {
 
         {activeTab === 'docs' && (
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Verification Documents</h3>
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Identity Proof</p>
-                <Button variant="outline">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Choose File
-                </Button>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold">Verification Documents</h3>
+              <Badge variant="outline" className="text-sm">
+                {documents.length} document{documents.length !== 1 ? 's' : ''} uploaded
+              </Badge>
+            </div>
+            
+            {/* Document Upload Sections */}
+            <div className="space-y-6">
+              {/* Identity Proof Section */}
+              <div>
+                <h4 className="text-md font-medium mb-3 text-gray-900">Identity Proof</h4>
+                <div className="space-y-3">
+                  {documents.filter(doc => documentUtils.parseDocumentPath(doc).documentType === 'identity').map((doc, index) => {
+                    const { originalName } = documentUtils.parseDocumentPath(doc);
+                    return (
+                      <div key={index} className="document-item">
+                        <div className="document-item-info">
+                          <FileText className="w-5 h-5 text-blue-600" />
+                          <span className="document-item-name">{originalName}</span>
+                        </div>
+                        <div className="document-actions">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentView(doc)}
+                            className="p-2"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentDelete(doc)}
+                            className="p-2 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="document-upload-zone">
+                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600 mb-3 text-sm">
+                      Upload government-issued ID (Driver's License, Passport, etc.)
+                    </p>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => handleDocumentUpload(e, 'identity')}
+                      className="hidden"
+                      id="identity-upload"
+                      disabled={uploadingDocument}
+                    />
+                    <label htmlFor="identity-upload">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={uploadingDocument}
+                        asChild
+                      >
+                        <span>
+                          {uploadingDocument ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4 mr-2" />
+                          )}
+                          {uploadingDocument ? 'Uploading...' : 'Add Identity Document'}
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+                </div>
               </div>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Property Ownership Documents</p>
-                <Button variant="outline">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Choose File
-                </Button>
+
+              {/* Property Ownership Section */}
+              <div>
+                <h4 className="text-md font-medium mb-3 text-gray-900">Property Ownership</h4>
+                <div className="space-y-3">
+                  {documents.filter(doc => documentUtils.parseDocumentPath(doc).documentType === 'property').map((doc, index) => {
+                    const { originalName } = documentUtils.parseDocumentPath(doc);
+                    return (
+                      <div key={index} className="document-item">
+                        <div className="document-item-info">
+                          <FileText className="w-5 h-5 text-green-600" />
+                          <span className="document-item-name">{originalName}</span>
+                        </div>
+                        <div className="document-actions">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentView(doc)}
+                            className="p-2"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentDelete(doc)}
+                            className="p-2 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="document-upload-zone">
+                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600 mb-3 text-sm">
+                      Upload property deeds, ownership certificates, or rental agreements
+                    </p>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => handleDocumentUpload(e, 'property')}
+                      className="hidden"
+                      id="property-upload"
+                      disabled={uploadingDocument}
+                    />
+                    <label htmlFor="property-upload">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={uploadingDocument}
+                        asChild
+                      >
+                        <span>
+                          {uploadingDocument ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4 mr-2" />
+                          )}
+                          {uploadingDocument ? 'Uploading...' : 'Add Property Document'}
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+                </div>
               </div>
+
+              {/* Other Documents Section */}
+              <div>
+                <h4 className="text-md font-medium mb-3 text-gray-900">Other Documents</h4>
+                <div className="space-y-3">
+                  {documents.filter(doc => {
+                    const type = documentUtils.parseDocumentPath(doc).documentType;
+                    return type !== 'identity' && type !== 'property';
+                  }).map((doc, index) => {
+                    const { originalName, documentType } = documentUtils.parseDocumentPath(doc);
+                    return (
+                      <div key={index} className="document-item">
+                        <div className="document-item-info">
+                          <FileText className="w-5 h-5 text-purple-600" />
+                          <div>
+                            <span className="document-item-name block">{originalName}</span>
+                            <span className="document-item-type">{documentType.replace('-', ' ')}</span>
+                          </div>
+                        </div>
+                        <div className="document-actions">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentView(doc)}
+                            className="p-2"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDocumentDelete(doc)}
+                            className="p-2 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="document-upload-zone">
+                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600 mb-3 text-sm">
+                      Upload insurance documents, certificates, or other relevant files
+                    </p>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                      onChange={(e) => handleDocumentUpload(e, 'other')}
+                      className="hidden"
+                      id="other-upload"
+                      disabled={uploadingDocument}
+                    />
+                    <label htmlFor="other-upload">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        disabled={uploadingDocument}
+                        asChild
+                      >
+                        <span>
+                          {uploadingDocument ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4 mr-2" />
+                          )}
+                          {uploadingDocument ? 'Uploading...' : 'Add Other Document'}
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Help Text */}
+            <div className="document-upload-guidelines">
+              <h5 className="text-sm font-medium text-blue-900 mb-2">Document Guidelines</h5>
+              <ul className="text-sm text-blue-800 space-y-1">
+                <li>• Accepted formats: PDF, JPG, PNG, DOC, DOCX</li>
+                <li>• Maximum file size: 10MB per document</li>
+                <li>• Documents are stored securely and encrypted</li>
+                <li>• Upload clear, readable copies for faster verification</li>
+              </ul>
             </div>
           </Card>
         )}

@@ -62,6 +62,32 @@ export const initializeStorageBuckets = async () => {
         console.log("✅ Created listings storage bucket");
       }
     }
+
+    // Check for documents bucket (for verification documents)
+    const documentsBucket = buckets.find((b) => b.name === "documents");
+    if (!documentsBucket) {
+      const { error: createBucketError } = await supabase.storage.createBucket(
+        "documents",
+        {
+          public: false, // Documents should be private
+          allowedMimeTypes: [
+            "application/pdf",
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          ],
+          fileSizeLimit: 10485760, // 10MB
+        }
+      );
+
+      if (createBucketError) {
+        console.error("Error creating documents bucket:", createBucketError);
+      } else {
+        console.log("✅ Created documents storage bucket");
+      }
+    }
   } catch (error) {
     console.error("Error initializing storage buckets:", error);
   }
