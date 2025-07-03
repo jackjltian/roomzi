@@ -11,6 +11,9 @@ export interface ProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+}
+
+export interface LandlordProfileData extends ProfileData {
   documents?: string[];
 }
 
@@ -75,8 +78,86 @@ const createProfileData = (userId: string, email: string): ProfileData => {
     phone: null,
     image_url: null,
     address: null,
-    documents: [],
   };
+};
+
+// Profile creation helper for landlords
+const createLandlordProfileData = (userId: string, email: string): LandlordProfileData => {
+  return {
+    id: userId,
+    full_name: email.split('@')[0], // Use email prefix as default name
+    email: email,
+    phone: null,
+    image_url: null,
+    address: null,
+    documents: [], // Only landlords have documents
+  };
+};
+
+// Profile synchronization utility functions
+export const profileSyncUtils = {
+  /**
+   * Get profile data from the opposite role to inherit common fields
+   */
+  getOppositeProfileData: async (userId: string, currentRole: 'tenant' | 'landlord'): Promise<Partial<ProfileData> | null> => {
+    try {
+      const oppositeRole = currentRole === 'tenant' ? 'landlord' : 'tenant';
+      const result = await profileUtils.getForRole(oppositeRole, userId);
+      
+      if (result.success && result.data?.data) {
+        const oppositeProfile = result.data.data;
+        // Return only common fields
+        return {
+          full_name: oppositeProfile.full_name,
+          phone: oppositeProfile.phone,
+          image_url: oppositeProfile.image_url,
+          address: oppositeProfile.address,
+        };
+      }
+    } catch (error) {
+      console.log('No opposite profile found or error fetching:', error);
+    }
+    return null;
+  },
+
+  /**
+   * Sync profile data between tenant and landlord profiles
+   */
+  syncProfiles: async (userId: string, updatedRole: 'tenant' | 'landlord', updatedData: Partial<ProfileData>): Promise<void> => {
+    try {
+      const oppositeRole = updatedRole === 'tenant' ? 'landlord' : 'tenant';
+      
+      // Get the opposite profile to check if it exists
+      const oppositeResult = await profileUtils.getForRole(oppositeRole, userId);
+      
+      if (oppositeResult.success && oppositeResult.data?.data) {
+        // Update the opposite profile with the new common field data
+        const commonFields = {
+          full_name: updatedData.full_name,
+          phone: updatedData.phone,
+          image_url: updatedData.image_url,
+          address: updatedData.address,
+        };
+
+        // Remove undefined values
+        const fieldsToUpdate = Object.fromEntries(
+          Object.entries(commonFields).filter(([_, value]) => value !== undefined)
+        );
+
+                 if (Object.keys(fieldsToUpdate).length > 0) {
+           if (oppositeRole === 'tenant') {
+             await tenantApi.update(userId, fieldsToUpdate, true); // Skip sync to avoid infinite loop
+           } else {
+             await landlordApi.update(userId, fieldsToUpdate, true); // Skip sync to avoid infinite loop
+           }
+           console.log(`✅ Synced profile data to ${oppositeRole} profile`);
+         }
+      }
+    } catch (error) {
+      console.warn('Failed to sync profiles:', error);
+      // Don't throw - sync failure shouldn't break the main update
+    }
+  },
 };
 
 // Tenant API Functions
@@ -86,7 +167,22 @@ export const tenantApi = {
    */
   create: async (userId: string, email: string): Promise<ApiResponse> => {
     try {
+      // Try to get data from landlord profile to inherit common fields
+      const landlordData = await profileSyncUtils.getOppositeProfileData(userId, 'tenant');
+      
       const profileData = createProfileData(userId, email);
+      
+      // Inherit data from landlord profile if available
+      if (landlordData) {
+        Object.assign(profileData, {
+          full_name: landlordData.full_name || profileData.full_name,
+          phone: landlordData.phone || profileData.phone,
+          image_url: landlordData.image_url || profileData.image_url,
+          address: landlordData.address || profileData.address,
+        });
+        console.log('✅ Inherited profile data from landlord profile');
+      }
+      
       const url = `${getApiBaseUrl()}/api/tenants`;
       
       console.log('Creating tenant profile:', { userId, email });
@@ -134,13 +230,19 @@ export const tenantApi = {
   /**
    * Update tenant profile
    */
-  update: async (tenantId: string, profileData: Partial<ProfileData>): Promise<ApiResponse> => {
+  update: async (tenantId: string, profileData: Partial<ProfileData>, skipSync = false): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/tenants/${tenantId}`;
       const response = await apiFetch(url, {
         method: 'PUT',
         body: JSON.stringify(profileData),
       });
+
+      // Sync the updated data to landlord profile (only if not already syncing)
+      if (!skipSync) {
+        await profileSyncUtils.syncProfiles(tenantId, 'tenant', profileData);
+      }
+
       return { success: true, data: response };
     } catch (error) {
       console.error('Error updating tenant profile:', error);
@@ -156,7 +258,22 @@ export const landlordApi = {
    */
   create: async (userId: string, email: string): Promise<ApiResponse> => {
     try {
-      const profileData = createProfileData(userId, email);
+      // Try to get data from tenant profile to inherit common fields
+      const tenantData = await profileSyncUtils.getOppositeProfileData(userId, 'landlord');
+      
+      const profileData = createLandlordProfileData(userId, email);
+      
+      // Inherit data from tenant profile if available
+      if (tenantData) {
+        Object.assign(profileData, {
+          full_name: tenantData.full_name || profileData.full_name,
+          phone: tenantData.phone || profileData.phone,
+          image_url: tenantData.image_url || profileData.image_url,
+          address: tenantData.address || profileData.address,
+        });
+        console.log('✅ Inherited profile data from tenant profile');
+      }
+      
       const url = `${getApiBaseUrl()}/api/landlords`;
       
       console.log('Creating landlord profile:', { userId, email });
@@ -204,13 +321,20 @@ export const landlordApi = {
   /**
    * Update landlord profile
    */
-  update: async (landlordId: string, profileData: Partial<ProfileData>): Promise<ApiResponse> => {
+  update: async (landlordId: string, profileData: Partial<LandlordProfileData>, skipSync = false): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/landlords/${landlordId}`;
       const response = await apiFetch(url, {
         method: 'PUT',
         body: JSON.stringify(profileData),
       });
+
+      // Sync the updated data to tenant profile (only if not already syncing)
+      if (!skipSync) {
+        const { documents, ...commonFields } = profileData;
+        await profileSyncUtils.syncProfiles(landlordId, 'landlord', commonFields);
+      }
+
       return { success: true, data: response };
     } catch (error) {
       console.error('Error updating landlord profile:', error);

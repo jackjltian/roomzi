@@ -93,6 +93,34 @@ const LandlordProfile = () => {
     fetchProfile();
   }, [user, toast]);
 
+  // Refresh profile data when component is focused (to show synced data from tenant profile)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user?.id && !loading && !saving && !switching) {
+        // Silently refresh the profile data
+        landlordApi.getById(user.id).then(result => {
+          if (result.success && result.data) {
+            setProfileData(result.data.data);
+            setDocuments(result.data.data.documents || []);
+            if (!editMode) {
+              setFormData({
+                full_name: result.data.data.full_name || '',
+                email: result.data.data.email || '',
+                phone: result.data.data.phone || '',
+                address: result.data.data.address || '',
+              });
+            }
+          }
+        }).catch(error => {
+          console.log('Background refresh failed:', error);
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user, loading, saving, switching, editMode]);
+
   const handleSwitchToTenant = async () => {
     if (!user) {
       toast({
@@ -132,7 +160,9 @@ const LandlordProfile = () => {
         variant: "default",
       });
       
+      // Navigate and force refresh to show latest synced data
       navigate('/tenant');
+      window.location.reload();
       
     } catch (error) {
       console.error('Error switching to tenant:', error);
