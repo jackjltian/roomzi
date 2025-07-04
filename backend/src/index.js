@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { successResponse } from "./utils/response.js";
-import { supabase } from "./config/supabase.js";
+import { supabase, initializeStorageBuckets } from "./config/supabase.js";
 import { landlordRouter } from "./routes/index.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
@@ -72,6 +72,9 @@ app.use("/api/landlord", landlordRouter);
 app.use("/api", apiRoutes);
 app.use("/api/chat", chatRoutes);
 
+// Routes
+app.use("/api/landlord", landlordRouter);
+
 // Basic health check route
 app.get("/api/health", (req, res) => {
   res.json(
@@ -103,7 +106,7 @@ process.on("SIGTERM", async () => {
 });
 
 // Start server
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`
 🚀 Server is running!
 📡 Port: ${port}
@@ -116,4 +119,7 @@ app.listen(port, () => {
    • /api/listings - Property listings
    • /api/chats - Messaging system
   `);
+
+  // Initialize storage buckets
+  await initializeStorageBuckets();
 });
