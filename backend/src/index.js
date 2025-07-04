@@ -9,6 +9,8 @@ import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
 import chatRoutes from "./routes/chat.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import multer from 'multer';
+import path from 'path';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -17,7 +19,22 @@ const port = process.env.PORT || 3001;
 const corsOptions = {
   origin: [
     process.env.FRONTEND_URL || "http://localhost:8080",
-    "http://localhost:8081",
+    "http://localhost:8081","http://localhost:8082",
+    "http://localhost:8083",
+    "http://localhost:8084",
+    "http://localhost:8085",
+    "http://localhost:8086",
+    "http://localhost:8087",
+    "http://localhost:8088",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8082",
+    "http://127.0.0.1:8083",
+    "http://127.0.0.1:8084",
+    "http://127.0.0.1:8085",
+    "http://127.0.0.1:8086",
+    "http://127.0.0.1:8087",
+    "http://127.0.0.1:8088"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: [
@@ -32,6 +49,20 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
+
+app.use('/uploads', express.static('uploads'));
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    // Save with original extension
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + Date.now() + ext);
+  }
+});
+const upload = multer({ storage });
 
 // Routes
 app.use("/api/payments", paymentRoutes);
