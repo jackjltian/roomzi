@@ -8,15 +8,24 @@ import { landlordRouter } from "./routes/index.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
 import chatRoutes from "./routes/chat.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: [
+    process.env.FRONTEND_URL || "http://localhost:8080",
+    "http://localhost:8081",
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "X-Requested-With",
+  ],
   credentials: true,
 };
 
@@ -25,6 +34,7 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes
+app.use("/api/payments", paymentRoutes);
 app.use("/api/landlord", landlordRouter);
 
 // API routes
