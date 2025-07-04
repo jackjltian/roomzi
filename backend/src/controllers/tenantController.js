@@ -65,15 +65,26 @@ export const getTenantById = async (req, res) => {
   }
 };
 
-// Create new tenant
+// Create new tenant (with upsert functionality)
 export const createTenant = async (req, res) => {
   try {
     const { id, full_name, email, phone, image_url, address } = req.body;
 
-    const tenant = await prisma.tenant_profiles.create({
-      data: {
+    // Use upsert to handle both create and update scenarios
+    const tenant = await prisma.tenant_profiles.upsert({
+      where: { id },
+      update: {
+        // Update existing profile with new data if provided
+        ...(full_name && { full_name }),
+        ...(email && { email }),
+        ...(phone !== undefined && { phone }),
+        ...(image_url !== undefined && { image_url }),
+        ...(address !== undefined && { address }),
+        updated_at: new Date(),
+      },
+      create: {
         id,
-        full_name,
+        full_name: full_name || email.split("@")[0], // Use email prefix as fallback
         email,
         phone,
         image_url,
@@ -83,17 +94,11 @@ export const createTenant = async (req, res) => {
 
     res
       .status(201)
-      .json(successResponse(tenant, "Tenant created successfully"));
+      .json(
+        successResponse(tenant, "Tenant profile created/updated successfully")
+      );
   } catch (error) {
-    console.error("Error creating tenant:", error);
-
-    // Handle unique constraint violation
-    if (error.code === "P2002") {
-      return res
-        .status(400)
-        .json(errorResponse(new Error("Tenant ID already exists"), 400));
-    }
-    
+    console.error("Error creating/updating tenant:", error);
     res.status(500).json(errorResponse(error));
   }
 };
