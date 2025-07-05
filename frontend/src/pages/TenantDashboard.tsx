@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
 import { getApiBaseUrl } from '@/utils/api';
+import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
 
 // Helper to safely parse JSON fields
 const parseMaybeJson = (value, fallback = []) => {
@@ -40,6 +41,7 @@ const TenantDashboard = () => {
 
   useEffect(() => {
     fetchProperties();
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }, []);
 
   const fetchProperties = async () => {
@@ -66,7 +68,16 @@ const TenantDashboard = () => {
           landlordId: listing.landlordId,
           landlordName: listing.landlordName,
           landlordPhone: listing.landlordPhone,
-          coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
+          coordinates: (() => {
+            if (typeof listing.coordinates === 'string') {
+              const [lat, lng] = listing.coordinates.split(',').map(Number);
+              if (!isNaN(lat) && !isNaN(lng)) {
+                return { lat, lng };
+              }
+              return { lat: 0, lng: 0 };
+            }
+            return listing.coordinates || { lat: 0, lng: 0 };
+          })(),
           available: listing.available,
           leaseType: listing.leaseType,
           requirements: parseMaybeJson(listing.requirements, []),
@@ -153,6 +164,9 @@ const TenantDashboard = () => {
           <h2 className="text-4xl font-bold text-gray-900 mb-3">Find Your Perfect Home</h2>
           <p className="text-gray-600 text-lg">Discover amazing properties with our enhanced search and map view</p>
         </div>
+
+        {/* Upcoming Payment Banner */}
+        <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">

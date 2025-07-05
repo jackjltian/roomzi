@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -16,23 +16,29 @@ import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
 import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
-
-const queryClient = new QueryClient();
+import { queryClient } from "./lib/queryClient";
+import FinancialAccount from "./pages/FinancialAccount";
+import ScrollToTop from './components/ScrollToTop';
+import FAQ from './pages/FAQ';
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
+        <SocketProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
             <Routes>
               {/* Public routes - ONLY Index page is public */}
               <Route path="/" element={<Index />} />
+              <Route path="/faq" element={<FAQ />} />
               
               {/* Auth-related routes - don't require existing auth but handle auth flow */}
               <Route 
@@ -82,6 +88,7 @@ const App = () => (
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
                       <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="financial-account" element={<FinancialAccount />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
@@ -128,8 +135,9 @@ const App = () => (
               />
             </Routes>
           </TooltipProvider>
-        </AuthProvider>
-      </BrowserRouter>
+        </SocketProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 
