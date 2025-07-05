@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
@@ -8,7 +7,7 @@ import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin } from
 
 const TenantMyHouse = () => {
   const navigate = useNavigate();
-  const [hasRental, setHasRental] = useState(false); // Set to true to show rental details
+  const [hasRental, setHasRental] = useState(true); // Set to true to show rental details
 
   // Mock rental data
   const currentRental = {
@@ -166,9 +165,9 @@ const TenantMyHouse = () => {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
               <div className="grid md:grid-cols-2 gap-4">
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate('/tenant/payments')}>
                   <DollarSign className="w-4 h-4 mr-2" />
-                  Payment History
+                  Payments
                 </Button>
                 <Button variant="outline" className="justify-start">
                   <Home className="w-4 h-4 mr-2" />

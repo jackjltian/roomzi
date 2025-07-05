@@ -1,23 +1,118 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2 } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2, Save, X } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { landlordApi, ApiError } from '@/utils/api';
+import { landlordApi, tenantApi, ApiError } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
+
+interface TenantProfileData {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  image_url?: string | null;
+  address?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
 
 const TenantProfile = () => {
   const navigate = useNavigate();
-  const { currentRole, setUserRole } = useUserRole();
+  const { setUserRole } = useUserRole();
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
   const [switching, setSwitching] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [profileData, setProfileData] = useState<TenantProfileData | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    address: '',
+  });
+
+  // Fetch tenant profile data
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.id) return;
+
+      try {
+        setLoading(true);
+        const result = await tenantApi.getById(user.id);
+        
+        if (result.success && result.data) {
+          setProfileData(result.data.data);
+          setFormData({
+            full_name: result.data.data.full_name || '',
+            email: result.data.data.email || '',
+            phone: result.data.data.phone || '',
+            address: result.data.data.address || '',
+          });
+        } else {
+          // Profile doesn't exist, create a basic one
+          const createResult = await tenantApi.create(user.id, user.email || '');
+          if (createResult.success && createResult.data) {
+            setProfileData(createResult.data.data);
+            setFormData({
+              full_name: user.user_metadata?.full_name || '',
+              email: user.email || '',
+              phone: '',
+              address: '',
+            });
+            setEditMode(true); // Automatically enter edit mode for new profiles
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load profile data.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [user, toast]);
+
+  // Refresh profile data when component is focused (to show synced data from landlord profile)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user?.id && !loading && !saving && !switching) {
+        // Silently refresh the profile data
+        tenantApi.getById(user.id).then(result => {
+          if (result.success && result.data) {
+            setProfileData(result.data.data);
+            if (!editMode) {
+              setFormData({
+                full_name: result.data.data.full_name || '',
+                email: result.data.data.email || '',
+                phone: result.data.data.phone || '',
+                address: result.data.data.address || '',
+              });
+            }
+          }
+        }).catch(error => {
+          console.log('Background refresh failed:', error);
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user, loading, saving, switching, editMode]);
 
   const handleSwitchToLandlord = async () => {
     if (!user) {
@@ -58,7 +153,9 @@ const TenantProfile = () => {
         variant: "default",
       });
       
+      // Navigate and force refresh to show latest synced data
       navigate('/landlord');
+      window.location.reload();
       
     } catch (error) {
       console.error('Error switching to landlord:', error);
@@ -85,12 +182,83 @@ const TenantProfile = () => {
     }
   };
 
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+
+    setSaving(true);
+    
+    try {
+      const updateResult = await tenantApi.update(user.id, {
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone || null,
+        address: formData.address || null,
+      });
+
+      if (updateResult.success) {
+        setProfileData(prev => prev ? {
+          ...prev,
+          ...formData,
+          phone: formData.phone || null,
+          address: formData.address || null,
+        } : null);
+        
+        setEditMode(false);
+        
+        toast({
+          title: "Success",
+          description: "Profile updated successfully!",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save profile changes. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    if (profileData) {
+      setFormData({
+        full_name: profileData.full_name || '',
+        email: profileData.email || '',
+        phone: profileData.phone || '',
+        address: profileData.address || '',
+      });
+    }
+    setEditMode(false);
+  };
+
   const tabs = [
     { id: 'info', label: 'Personal Info', icon: User },
     { id: 'docs', label: 'Documents', icon: FileText },
     { id: 'credit', label: 'Credit Score', icon: CreditCard },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-roomzi-blue" />
+          <p className="text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -119,9 +287,15 @@ const TenantProfile = () => {
         <Card className="p-6 mb-6">
           <div className="flex items-center space-x-6">
             <div className="relative">
-              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center">
-                <User className="w-12 h-12 text-gray-500" />
-              </div>
+              <Avatar className="w-24 h-24">
+                <AvatarImage 
+                  src={profileData?.image_url || undefined} 
+                  alt={profileData?.full_name || 'Profile'}
+                />
+                <AvatarFallback className="bg-gray-200 text-gray-500 text-xl">
+                  {profileData?.full_name ? profileData.full_name.split(' ').map(n => n[0]).join('').toUpperCase() : <User className="w-12 h-12" />}
+                </AvatarFallback>
+              </Avatar>
               <Button
                 size="sm"
                 className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
@@ -130,24 +304,43 @@ const TenantProfile = () => {
               </Button>
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900">John Doe</h2>
-              <p className="text-gray-600">john.doe@email.com</p>
-              <p className="text-gray-600">+1 (555) 123-4567</p>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {profileData?.full_name || 'Tenant'}
+              </h2>
+              <p className="text-gray-600">{profileData?.email}</p>
+              {profileData?.phone && (
+                <p className="text-gray-600">{profileData.phone}</p>
+              )}
+              {profileData?.address && (
+                <p className="text-gray-600">{profileData.address}</p>
+              )}
               <Badge className="mt-2 bg-green-100 text-green-800">Verified</Badge>
             </div>
-            <Button
-              onClick={handleSwitchToLandlord}
-              variant="outline"
-              className="flex items-center"
-              disabled={switching}
-            >
-              {switching ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Home className="w-4 h-4 mr-2" />
+            <div className="flex gap-2">
+              {!editMode && (
+                <Button
+                  onClick={() => setEditMode(true)}
+                  variant="outline"
+                  className="flex items-center"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Edit Profile
+                </Button>
               )}
-              {switching ? 'Switching...' : 'Switch to Landlord'}
-            </Button>
+              <Button
+                onClick={handleSwitchToLandlord}
+                variant="outline"
+                className="flex items-center"
+                disabled={switching}
+              >
+                {switching ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Home className="w-4 h-4 mr-2" />
+                )}
+                {switching ? 'Switching...' : 'Switch to Landlord'}
+              </Button>
+            </div>
           </div>
         </Card>
 
@@ -172,34 +365,87 @@ const TenantProfile = () => {
         {/* Tab Content */}
         {activeTab === 'info' && (
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Personal Information</h3>
+              {editMode && (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCancelEdit}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveProfile}
+                    size="sm"
+                    className="flex items-center roomzi-gradient"
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-1" />
+                    )}
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
+            </div>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name
                 </label>
-                <Input defaultValue="John Doe" />
+                <Input 
+                  value={formData.full_name}
+                  onChange={(e) => handleInputChange('full_name', e.target.value)}
+                  disabled={!editMode}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
-                <Input defaultValue="john.doe@email.com" />
+                <Input 
+                  value={formData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  disabled={!editMode}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
-                <Input defaultValue="+1 (555) 123-4567" />
+                <Input 
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  disabled={!editMode}
+                  placeholder="Enter phone number"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Location
                 </label>
-                <Input defaultValue="New York, NY" />
+                <Input 
+                  value={formData.address}
+                  onChange={(e) => handleInputChange('address', e.target.value)}
+                  disabled={!editMode}
+                  placeholder="Enter your location"
+                />
               </div>
             </div>
-            <Button className="mt-4 roomzi-gradient">Save Changes</Button>
+            {!editMode && (
+              <Button 
+                className="mt-4 roomzi-gradient"
+                onClick={() => setEditMode(true)}
+              >
+                Edit Profile
+              </Button>
+            )}
           </Card>
         )}
 
