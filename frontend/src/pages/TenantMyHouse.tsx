@@ -8,7 +8,7 @@ import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin } from
 
 const TenantMyHouse = () => {
   const navigate = useNavigate();
-  const [hasRental, setHasRental] = useState(false); // Set to true to show rental details
+  const [hasRental, setHasRental] = useState(true); // Set to true to show rental details
 
   // Mock rental data
   const currentRental = {

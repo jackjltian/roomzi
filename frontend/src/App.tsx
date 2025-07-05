@@ -14,6 +14,8 @@ import LandlordDashboard from "./pages/LandlordDashboard";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
+import ManageListing from "./pages/ManageListing";
+import Payments from "./pages/Payments";
 import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
@@ -113,6 +115,22 @@ const App = () => (
                 element={
                   <RoleProtectedRoute requiredRole="landlord">
                     <CreateListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/manage-listing/:id" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <ManageListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/payments" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <Payments />
                   </RoleProtectedRoute>
                 } 
               />
