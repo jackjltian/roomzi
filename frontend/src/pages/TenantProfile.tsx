@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,9 @@ import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2 
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { landlordApi, ApiError } from '@/utils/api';
+import { landlordApi, ApiError, apiFetch, getApiBaseUrl } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
+import { supabase } from '@/lib/supabaseClient';
 
 const TenantProfile = () => {
   const navigate = useNavigate();
@@ -18,6 +19,14 @@ const TenantProfile = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
   const [switching, setSwitching] = useState(false);
+  const [name, setName] = useState(user?.user_metadata?.fullName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.user_metadata?.phone || '');
+  const [location, setLocation] = useState(user?.user_metadata?.location || '');
+  const [saving, setSaving] = useState(false);
+  const [profilePhoto, setProfilePhoto] = useState(user?.user_metadata?.profilePhoto || '');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSwitchToLandlord = async () => {
     if (!user) {
@@ -85,6 +94,101 @@ const TenantProfile = () => {
     }
   };
 
+  const handleSaveChanges = async () => {
+    setSaving(true);
+    try {
+      const response = await apiFetch(`${getApiBaseUrl()}/api/tenants/${user.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          full_name: name,
+          email,
+          phone,
+          address: location,
+          image_url: profilePhoto,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (response.success) {
+        toast({
+          title: 'Profile Updated',
+          description: 'Your changes have been saved.',
+          variant: 'default',
+        });
+        // Dispatch a custom event for local dashboard update
+        window.dispatchEvent(new CustomEvent('tenantProfileUpdated', {
+          detail: {
+            fullName: name,
+            email,
+            phone,
+            location,
+            profilePhoto,
+          }
+        }));
+        navigate('/tenant', { state: { profileUpdated: true } });
+      } else {
+        throw new Error(response.message || 'Failed to update profile');
+      }
+    } catch (error) {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Could not update profile.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCameraButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingPhoto(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `profile-photos/${fileName}`;
+      // Show preview immediately
+      const localPreview = URL.createObjectURL(file);
+      setProfilePhoto(localPreview);
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('profile-photos')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      // Get public URL
+      const { data } = supabase.storage.from('profile-photos').getPublicUrl(filePath);
+      if (!data?.publicUrl) throw new Error('Failed to get public URL');
+      setProfilePhoto(data.publicUrl); // Update to public URL after upload
+      // Update user metadata/profile with new photo URL
+      const response = await apiFetch(`/api/tenant/update-profile`, {
+        method: 'POST',
+        body: JSON.stringify({
+          id: user.id,
+          profilePhoto: data.publicUrl,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.success) throw new Error(response.message || 'Failed to update profile photo');
+      toast({
+        title: 'Profile Photo Updated',
+        description: 'Your new photo has been saved.',
+        variant: 'default',
+      });
+    } catch (error) {
+      toast({
+        title: 'Photo Upload Failed',
+        description: error.message || 'Could not upload photo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const tabs = [
     { id: 'info', label: 'Personal Info', icon: User },
     { id: 'docs', label: 'Documents', icon: FileText },
@@ -116,39 +220,52 @@ const TenantProfile = () => {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Profile Header */}
-        <Card className="p-6 mb-6">
-          <div className="flex items-center space-x-6">
-            <div className="relative">
-              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center">
+        <Card className="p-6 mb-6 flex items-center space-x-6">
+          <div className="relative">
+            <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+              {profilePhoto ? (
+                <img src={profilePhoto} alt="Profile" className="w-24 h-24 object-cover" />
+              ) : (
                 <User className="w-12 h-12 text-gray-500" />
-              </div>
-              <Button
-                size="sm"
-                className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
-              >
-                <Camera className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900">John Doe</h2>
-              <p className="text-gray-600">john.doe@email.com</p>
-              <p className="text-gray-600">+1 (555) 123-4567</p>
-              <Badge className="mt-2 bg-green-100 text-green-800">Verified</Badge>
+              )}
             </div>
             <Button
-              onClick={handleSwitchToLandlord}
-              variant="outline"
-              className="flex items-center"
-              disabled={switching}
+              size="sm"
+              className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
+              onClick={handleCameraButtonClick}
+              disabled={uploadingPhoto}
+              aria-label="Change profile photo"
             >
-              {switching ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Home className="w-4 h-4 mr-2" />
-              )}
-              {switching ? 'Switching...' : 'Switch to Landlord'}
+              {uploadingPhoto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
             </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleProfilePhotoChange}
+            />
           </div>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-gray-900">{name || 'Your Name'}</h2>
+            <div className="text-gray-600">{email}</div>
+            <div className="text-gray-600">{phone}</div>
+            <div className="text-gray-600">{location}</div>
+            <Badge className="mt-2 bg-green-100 text-green-800">Verified</Badge>
+          </div>
+          <Button
+            onClick={handleSwitchToLandlord}
+            variant="outline"
+            className="flex items-center"
+            disabled={switching}
+          >
+            {switching ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Home className="w-4 h-4 mr-2" />
+            )}
+            {switching ? 'Switching...' : 'Switch to Landlord'}
+          </Button>
         </Card>
 
         {/* Tab Navigation */}
@@ -178,28 +295,30 @@ const TenantProfile = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name
                 </label>
-                <Input defaultValue="John Doe" />
+                <Input value={name} onChange={e => setName(e.target.value)} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
-                <Input defaultValue="john.doe@email.com" />
+                <Input value={email} onChange={e => setEmail(e.target.value)} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
-                <Input defaultValue="+1 (555) 123-4567" />
+                <Input value={phone} onChange={e => setPhone(e.target.value)} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Location
                 </label>
-                <Input defaultValue="New York, NY" />
+                <Input value={location} onChange={e => setLocation(e.target.value)} />
               </div>
             </div>
-            <Button className="mt-4 roomzi-gradient">Save Changes</Button>
+            <Button className="mt-4 roomzi-gradient" onClick={handleSaveChanges} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
           </Card>
         )}
 
