@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
 import { Property } from '@/data/sampleProperties';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -35,11 +35,46 @@ const TenantDashboard = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const { toast } = useToast();
+  const [profile, setProfile] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    location: '',
+    profilePhoto: '',
+  });
+  const location = useLocation();
 
   useEffect(() => {
     fetchProperties();
+    fetchProfile();
+  }, [user]);
+
+  useEffect(() => {
+    if (location.state && location.state.profileUpdated) {
+      fetchProfile();
+      // Clear the state so it doesn't refetch on every render
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchProfile();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  useEffect(() => {
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setProfile(e.detail);
+      }
+    };
+    window.addEventListener('tenantProfileUpdated', handleProfileUpdated);
+    return () => window.removeEventListener('tenantProfileUpdated', handleProfileUpdated);
   }, []);
 
   const fetchProperties = async () => {
@@ -89,6 +124,25 @@ const TenantDashboard = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchProfile = async () => {
+    if (!user) return;
+    try {
+      const response = await apiFetch(`${getApiBaseUrl()}/api/tenants/${user.id}`);
+      if (response.success && response.data) {
+        const data = response.data.data;
+        setProfile({
+          fullName: data.full_name || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          location: data.address || '',
+          profilePhoto: data.image_url || '',
+        });
+      }
+    } catch (err) {
+      // Optionally show a toast or log error
     }
   };
 
@@ -148,6 +202,28 @@ const TenantDashboard = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24">
+        {/* Tenant Profile Info */}
+        <Card className="p-6 mb-6 flex items-center gap-6">
+          <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+            {profile.profilePhoto ? (
+              <img src={profile.profilePhoto} alt="Profile" className="w-20 h-20 object-cover" />
+            ) : (
+              <User className="w-10 h-10 text-gray-400" />
+            )}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{profile.fullName || 'Your Name'}</h2>
+            <div className="text-gray-600 text-sm">{profile.email}</div>
+            <div className="text-gray-600 text-sm">{profile.phone}</div>
+            <div className="text-gray-600 text-sm">{profile.location}</div>
+          </div>
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" onClick={() => navigate('/tenant/profile')}>
+              <Settings className="w-4 h-4 mr-2" /> Edit Profile
+            </Button>
+          </div>
+        </Card>
+
         {/* Enhanced Welcome Section */}
         <div className="mb-8 text-center">
           <h2 className="text-4xl font-bold text-gray-900 mb-3">Find Your Perfect Home</h2>
