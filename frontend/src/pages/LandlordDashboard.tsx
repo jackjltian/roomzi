@@ -25,7 +25,11 @@ const LandlordDashboard = () => {
 
   useEffect(() => {
     async function fetchProperties() {
-      const response = await fetch('http://localhost:3001/api/landlord/get-listings', {
+      if (!userId) return;
+      
+      console.log('Fetching properties for user ID:', userId);
+      
+      const response = await fetch(`http://localhost:3001/api/landlords/${userId}/listings`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -33,13 +37,20 @@ const LandlordDashboard = () => {
         credentials: 'include',
       });
       const data = await response.json();
+      console.log('API response:', data);
+      
       if (response.ok) {
-        setProperties(data);
+        // The backend returns data wrapped in successResponse format
+        const listings = data.data || data;
+        console.log('Filtered listings:', listings);
+        setProperties(listings);
+      } else {
+        console.error('Failed to fetch properties:', data);
       }
     }
 
     fetchProperties();
-  }, []);
+  }, [userId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
@@ -144,8 +155,6 @@ const LandlordDashboard = () => {
         {/* Properties Grid */}
         <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-8">
           {properties.map((property) => (
-            property.landlord_id === userId
-            &&
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">
                 <img
@@ -185,7 +194,12 @@ const LandlordDashboard = () => {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => navigate(`/landlord/listing/${property.id}/payments`)}
+                  >
                     Manage
                   </Button>
                   <Button size="sm" variant="outline" className="flex-1">

@@ -16,10 +16,12 @@ import { getApiBaseUrl } from '@/utils/api';
 const parseMaybeJson = (value, fallback = []) => {
   if (typeof value === 'string') {
     try {
+      if (!value || value === 'null' || value === 'undefined') return fallback;
       return JSON.parse(value);
-    } catch {
+    } catch (e) {
+      console.warn('Failed to parse JSON:', value, e);
       // Not a JSON string, return as array with the string or fallback
-      return [value];
+      return value ? [value] : fallback;
     }
   }
   if (Array.isArray(value)) return value;
@@ -35,8 +37,17 @@ const TenantDashboard = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const { toast } = useToast();
+
+  // Debug: Log current user info
+  useEffect(() => {
+    console.log('🔍 Current user info:', {
+      id: user?.id,
+      email: user?.email,
+      role: user?.user_metadata?.role
+    });
+  }, [user]);
 
   useEffect(() => {
     fetchProperties();
@@ -54,7 +65,7 @@ const TenantDashboard = () => {
           address: listing.address,
           city: listing.city,
           state: listing.state,
-          zipCode: listing.zipCode,
+          zipCode: listing.zip_code,
           price: listing.price,
           type: listing.type.toLowerCase(),
           bedrooms: listing.bedrooms,
@@ -63,14 +74,25 @@ const TenantDashboard = () => {
           images: parseMaybeJson(listing.images, []),
           description: listing.description,
           amenities: parseMaybeJson(listing.amenities, []),
-          landlordId: listing.landlordId,
-          landlordName: listing.landlordName,
-          landlordPhone: listing.landlordPhone,
-          coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
+          landlordId: listing.landlord_id,
+          landlordName: listing.landlord_name,
+          landlordPhone: listing.landlord_phone,
+          coordinates: (() => {
+            try {
+              if (!listing.coordinates || listing.coordinates === 'null') return { lat: 0, lng: 0 };
+              if (typeof listing.coordinates === 'string') {
+                return JSON.parse(listing.coordinates);
+              }
+              return listing.coordinates;
+            } catch (e) {
+              console.warn('Failed to parse coordinates:', listing.coordinates, e);
+              return { lat: 0, lng: 0 };
+            }
+          })(),
           available: listing.available,
-          leaseType: listing.leaseType,
+          leaseType: listing.lease_type,
           requirements: parseMaybeJson(listing.requirements, []),
-          houseRules: parseMaybeJson(listing.houseRules, []),
+          houseRules: parseMaybeJson(listing.house_rules, []),
         }));
         setProperties(transformedProperties);
       } else {

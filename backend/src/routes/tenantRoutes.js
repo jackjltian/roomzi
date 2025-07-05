@@ -5,7 +5,9 @@ import {
   createTenant,
   updateTenant,
   deleteTenant,
+  getTenantListings,
 } from "../controllers/tenantController.js";
+import { autoCreateTenantProfile } from "../middleware/autoCreateProfile.js";
 
 const router = express.Router();
 
@@ -13,15 +15,18 @@ const router = express.Router();
 router.get("/", getTenants);
 
 // GET /api/tenants/:id - Get tenant by ID
-router.get("/:id", getTenantById);
+router.get("/:id", autoCreateTenantProfile, getTenantById);
+
+// GET /api/tenants/:id/listings - Get tenant's listings
+router.get("/:id/listings", autoCreateTenantProfile, getTenantListings);
 
 // POST /api/tenants - Create new tenant
 router.post("/", createTenant);
 
 // PUT /api/tenants/:id - Update tenant
-router.put("/:id", updateTenant);
+router.put("/:id", autoCreateTenantProfile, updateTenant);
 
 // DELETE /api/tenants/:id - Delete tenant
-router.delete("/:id", deleteTenant);
+router.delete("/:id", autoCreateTenantProfile, deleteTenant);
 
 export default router;

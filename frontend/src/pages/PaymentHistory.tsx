@@ -1,37 +1,11 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, DollarSign, FileText, CheckCircle, Clock, UploadCloud } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-
-const initialMockPayments = [
-  {
-    id: 1,
-    amount: 2500,
-    date: '2024-05-01',
-    status: 'Approved',
-    proof: 'proof1.pdf',
-    proofUrl: '',
-  },
-  {
-    id: 2,
-    amount: 2500,
-    date: '2024-04-01',
-    status: 'Pending',
-    proof: 'proof2.pdf',
-    proofUrl: '',
-  },
-  {
-    id: 3,
-    amount: 2500,
-    date: '2024-03-01',
-    status: 'Rejected',
-    proof: 'proof3.pdf',
-    proofUrl: '',
-  },
-];
 
 const statusColor = {
   Approved: 'text-green-600',
@@ -47,13 +21,36 @@ const statusIcon = {
 
 const Payments = () => {
   const navigate = useNavigate();
+  const { listingId } = useParams<{ listingId: string }>();
   const { user } = useAuth();
   const tenantId = user?.id;
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [payments, setPayments] = useState(initialMockPayments);
+  const [payments, setPayments] = useState([]);
+  const [selectedListingId, setSelectedListingId] = useState(listingId || '');
+  const [listings, setListings] = useState([]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    fetch(`http://localhost:3001/api/payments/tenant/${tenantId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setPayments(data.payments);
+      })
+      .catch(err => console.error('Error fetching payments:', err));
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    fetch(`http://localhost:3001/api/tenants/${tenantId}/listings`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setListings(data.data || data.listings || []);
+      })
+      .catch(err => console.error('Error fetching listings:', err));
+  }, [tenantId]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -70,10 +67,16 @@ const Payments = () => {
     setSubmitting(true);
     
     // Debug logging
-    console.log('Submitting payment with:', { tenantId, amount, file: file?.name });
+    console.log('Submitting payment with:', { tenantId, listingId, amount, file: file?.name });
     
     if (!tenantId) {
       alert('User not found. Please log in again.');
+      setSubmitting(false);
+      return;
+    }
+
+    if (!selectedListingId) {
+      alert('Please select a listing for this payment.');
       setSubmitting(false);
       return;
     }
@@ -81,6 +84,7 @@ const Payments = () => {
     try {
       const formData = new FormData();
       formData.append('tenantId', tenantId);
+      formData.append('listingId', selectedListingId);
       formData.append('amount', amount);
       if (file) formData.append('proof', file);
 
@@ -151,6 +155,14 @@ const Payments = () => {
             Make a Payment
           </Button>
         </div>
+        {!listingId && listings.length === 0 && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-yellow-800 text-sm">
+              Note: You need to be associated with a property to make payments. If you don't see any listings, 
+              you may not be renting any properties yet.
+            </p>
+          </div>
+        )}
         {showForm && (
           <form onSubmit={handleSubmit} className="space-y-6 mb-8 border rounded-md p-6 bg-gray-50">
             <div>
@@ -183,6 +195,19 @@ const Payments = () => {
               </div>
               {file && <div className="mt-2 text-sm text-gray-600">Selected: {file.name}</div>}
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Select Listing</label>
+              <Select value={selectedListingId} onValueChange={setSelectedListingId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a listing" />
+                </SelectTrigger>
+                <SelectContent>
+                  {listings.map(listing => (
+                    <SelectItem key={listing.id} value={listing.id}>{listing.address}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button type="submit" className="roomzi-gradient w-full" disabled={submitting}>
               {submitting ? 'Submitting...' : 'Submit Payment'}
             </Button>
@@ -201,15 +226,15 @@ const Payments = () => {
               <div className="flex items-center gap-4 mt-2 md:mt-0">
                 <span className={`flex items-center font-medium ${statusColor[payment.status]}`}>{statusIcon[payment.status]}{payment.status}</span>
                 {payment.proofUrl ? (
-                  <a href={payment.proofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-600 hover:underline text-sm">
+                  <a href={`http://localhost:3001${payment.proofUrl}`} target="_blank" rel="noopener noreferrer" className="flex items-center text-blue-600 hover:underline text-sm">
                     <FileText className="w-4 h-4 mr-1" />
                     View Proof
                   </a>
                 ) : (
-                  <a href="#" className="flex items-center text-blue-600 hover:underline text-sm">
+                  <span className="flex items-center text-gray-400 text-sm">
                     <FileText className="w-4 h-4 mr-1" />
-                    View Proof
-                  </a>
+                    No Proof
+                  </span>
                 )}
               </div>
             </Card>

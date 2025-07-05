@@ -3,6 +3,8 @@ import multer from "multer";
 import {
   createPayment,
   getPaymentsByTenant,
+  getPaymentsByListing,
+  updatePaymentStatus,
 } from "../controllers/paymentController.js";
 
 const router = express.Router();
@@ -14,5 +16,11 @@ router.post("/", upload.single("proof"), createPayment);
 
 // Get all payments for a tenant
 router.get("/tenant/:tenantId", getPaymentsByTenant);
+
+// Get all payments for a listing
+router.get("/listing/:listingId", getPaymentsByListing);
+
+// Update payment status (approve/reject)
+router.patch('/:paymentId/status', updatePaymentStatus);
 
 export default router;

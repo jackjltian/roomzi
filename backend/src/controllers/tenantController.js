@@ -157,3 +157,35 @@ export const deleteTenant = async (req, res) => {
     res.status(500).json(errorResponse(error));
   }
 };
+
+// Get tenant's listings (properties they're renting)
+export const getTenantListings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log("Fetching listings for tenant ID:", id);
+
+    const listings = await prisma.listings.findMany({
+      where: { 
+        tenant_id: id,
+        available: false // Only show occupied properties
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    console.log("Found listings:", listings.length, "for tenant:", id);
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = listings.map(listing => ({
+      ...listing,
+      id: listing.id.toString(),
+    }));
+
+    res.json(
+      successResponse(responseData, "Tenant listings retrieved successfully")
+    );
+  } catch (error) {
+    console.error("Error fetching tenant listings:", error);
+    res.status(500).json(errorResponse(error));
+  }
+};

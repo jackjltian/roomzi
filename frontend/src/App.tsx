@@ -21,6 +21,7 @@ import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
 import Payments from "./pages/PaymentHistory";
+import LandlordPayments from './pages/LandlordPayments';
 
 const queryClient = new QueryClient();
 
@@ -83,6 +84,7 @@ const App = () => (
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
                       <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="payments/:listingId" element={<Payments />} />
                       <Route path="payments" element={<Payments />} />
                     </Routes>
                   </RoleProtectedRoute>
@@ -96,6 +98,7 @@ const App = () => (
                       <Route path="/" element={<LandlordDashboard />} />
                       <Route path="profile" element={<LandlordProfile />} />
                       <Route path="chats" element={<LandlordChats />} />
+                      <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 

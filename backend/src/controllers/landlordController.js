@@ -2,6 +2,34 @@ import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
 import { supabase } from "../config/supabase.js";
 
+// Helper function to convert BigInt to string for JSON serialization
+const convertBigIntToString = (obj) => {
+  if (obj === null || obj === undefined) return obj;
+  
+  if (typeof obj === 'bigint') {
+    return obj.toString();
+  }
+  
+  // Handle Date objects
+  if (obj instanceof Date) {
+    return obj.toISOString();
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(convertBigIntToString);
+  }
+  
+  if (typeof obj === 'object') {
+    const converted = {};
+    for (const [key, value] of Object.entries(obj)) {
+      converted[key] = convertBigIntToString(value);
+    }
+    return converted;
+  }
+  
+  return obj;
+};
+
 // Get all landlords
 export const getLandlords = async (req, res) => {
   try {
@@ -142,21 +170,15 @@ export const deleteLandlord = async (req, res) => {
 export const getLandlordListings = async (req, res) => {
   try {
     const { id } = req.params;
-    const { includeUnavailable = false } = req.query;
-
-    const where = {
-      landlord_id: id,
-      ...(includeUnavailable !== "true" && { available: true }),
-    };
-
+    // No available filter, so all listings for this landlord are returned
+    const where = { landlord_id: id };
     const listings = await prisma.listings.findMany({
       where,
       orderBy: { created_at: "desc" },
     });
-
-    res.json(
-      successResponse(listings, "Landlord listings retrieved successfully")
-    );
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(listings);
+    res.json(successResponse(responseData, "Landlord listings retrieved successfully"));
   } catch (error) {
     console.error("Error fetching landlord listings:", error);
     res.status(500).json(errorResponse(error));
@@ -202,67 +224,91 @@ export const createListing = async (req, res) => {
       });
     }
 
-    const { data, error } = await supabase
-      .from("listings")
-      .insert([
-        {
-          title,
-          type,
-          address,
-          city,
-          state,
-          zip_code: zipCode,
-          bedrooms,
-          bathrooms,
-          area,
-          price,
-          description,
-          lease_type: leaseType,
-          amenities,
-          requirements,
-          house_rules: houseRules,
-          images,
-          landlord_id: landlordId,
-          available: true,
-        },
-      ])
-      .select();
+    // Check if landlord profile exists, create if it doesn't
+    let landlordProfile = await prisma.landlord_profiles.findUnique({
+      where: { id: landlordId },
+    });
 
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        error: "An error occurred while creating the listing.",
+    if (!landlordProfile) {
+      // Create a basic landlord profile
+      landlordProfile = await prisma.landlord_profiles.create({
+        data: {
+          id: landlordId,
+          full_name: `Landlord ${landlordId.slice(0, 8)}`,
+          email: `${landlordId.slice(0, 8)}@example.com`,
+          phone: null,
+          image_url: null,
+          address: null,
+          documents: [],
+        },
       });
+      console.log("Created new landlord profile:", landlordProfile.id);
     }
+
+    const listing = await prisma.listings.create({
+      data: {
+        title,
+        type,
+        address,
+        city,
+        state,
+        zip_code: zipCode,
+        bedrooms: bedrooms ? parseInt(bedrooms) : null,
+        bathrooms: bathrooms ? parseInt(bathrooms) : null,
+        area: area ? parseFloat(area) : null,
+        price: parseFloat(price),
+        description,
+        lease_type: leaseType,
+        amenities: amenities || [],
+        requirements,
+        house_rules: houseRules,
+        images: images ? JSON.stringify(images) : null,
+        landlord_id: landlordId,
+        available: true,
+      },
+    });
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = {
+      ...listing,
+      id: listing.id.toString(),
+    };
 
     res.status(201).json({
       message: "The listing has been created.",
-      listing: data[0],
+      listing: responseData,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      error: "An error occurred while creating the listing.",
-    });
-  }
-};
-
-export const getListings = async (req, res) => {
-  try {
-    const { data, error } = await supabase.from("listings").select("*");
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        error: "An error occurred while getting the listings.",
+    console.error("Error creating listing:", err);
+    
+    // Provide more specific error messages
+    if (err.code === 'P2002') {
+      return res.status(400).json({
+        error: "A listing with this title already exists.",
+        details: err.message
       });
     }
-
-    res.status(200).json(data);
-  } catch (err) {
-    console.error(err);
+    
+    if (err.code === 'P2003') {
+      return res.status(400).json({
+        error: "Invalid landlord ID or database constraint violation.",
+        details: err.message
+      });
+    }
+    
+    if (err.code === 'P2025') {
+      return res.status(404).json({
+        error: "Landlord profile not found.",
+        details: err.message
+      });
+    }
+    
     res.status(500).json({
-      error: "An error occurred while getting the listings.",
+      error: "An error occurred while creating the listing.",
+      details: err.message,
+      code: err.code
     });
   }
 };
+
+

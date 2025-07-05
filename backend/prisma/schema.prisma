@@ -88,10 +88,11 @@ model tenant_profiles {
 }
 
 model payment_requests {
-  id       Int      @id @default(autoincrement())
-  tenantId String
-  amount   Float
-  date     DateTime @default(now())
-  status   String
-  proofUrl String?
+  id         Int      @id @default(autoincrement())
+  tenantId   String
+  listingId  BigInt   // or String, but BigInt matches your listings table
+  amount     Float
+  date       DateTime @default(now())
+  status     String
+  proofUrl   String?
 }
