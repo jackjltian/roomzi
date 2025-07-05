@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Home, Image } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/context/AuthContext';
-import CameraButton from '@/components/ui/camera-button';
 
 const CreateListing = () => {
   const { user } = useAuth();
@@ -214,47 +214,6 @@ const CreateListing = () => {
                 </select>
               </div>
             </div>
-            {/* Image Upload Section */}
-            <div className="mt-6">
-              <Label>Property Images</Label>
-              <div className="flex items-center gap-4 mt-2">
-                <Input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleUploadFile}
-                  className="w-auto"
-                />
-                <CameraButton
-                  onImageSelect={(file) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      images: [...prev.images, file]
-                    }));
-                  }}
-                />
-              </div>
-              {/* Preview selected images */}
-              <div className="flex flex-wrap gap-4 mt-4">
-                {formData.images.map((file, idx) => (
-                  <div key={idx} className="relative">
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={`Selected ${idx}`}
-                      className="w-24 h-24 object-cover rounded shadow"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteFile(idx)}
-                      className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs"
-                      aria-label="Remove image"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
           </Card>
 
           {/* Location */}
@@ -431,6 +390,52 @@ const CreateListing = () => {
                   placeholder="e.g., No pets, Quiet hours 10pm-8am, No parties..."
                   rows={4}
                 />
+              </div>
+            </div>
+          </Card>
+
+          {/* Photos */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-6">Photos</h2>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+              <Image className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-600 mb-2">Upload property photos</p>
+              <p className="text-sm text-gray-500">Drag and drop or click to browse</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4"
+                onClick={() => document.getElementById('file-upload')?.click()}
+              >
+                Choose Files
+              </Button>
+              <input
+                id="file-upload"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleUploadFile}
+                style={{ display: 'none' }}
+              />
+              <div className="mt-4">
+                {formData.images.length > 0 && (
+                  <ul className="list-disc pl-5">
+                    {formData.images.map((file, index) => (
+                      <li key={index} className="flex justify-center items-center text-gray-700">
+                        <span>{file.name}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteFile(index)}
+                          className="ml-4 text-red-500"
+                        >
+                          X
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </Card>
