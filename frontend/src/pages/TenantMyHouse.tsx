@@ -212,7 +212,7 @@ const TenantMyHouse = () => {
                   <DollarSign className="w-4 h-4 mr-2" />
                   Payments
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate(`/tenant/maintenance/${currentRental.id}`)}>
                   <Home className="w-4 h-4 mr-2" />
                   Maintenance Request
                 </Button>

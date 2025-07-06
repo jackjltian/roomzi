@@ -97,3 +97,16 @@ model payment_requests {
   status    String
   proofUrl  String?
 }
+
+model maintenance_requests {
+  id          Int      @id @default(autoincrement())
+  tenantId    String
+  landlordId  String
+  listingId   BigInt
+  description String
+  images      String[]
+  status      String   @default("Pending") // Pending, In Progress, Completed, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  landlordcomment String
+}

@@ -30,6 +30,8 @@ import { queryClient } from "./lib/queryClient";
 import FinancialAccount from "./pages/FinancialAccount";
 import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
+import TenantMaintenanceRequest from "./pages/TenantMaintenanceRequest";
+import LandlordMaintenanceRequests from "./pages/LandlordMaintenanceRequests";
 
 // Removed duplicate import of Payments (PaymentHistory)
 // import Payments from "./pages/PaymentHistory";
@@ -101,6 +103,7 @@ const App = () => (
                       <Route path="my-house" element={<TenantMyHouse />} />
                       <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
+                      <Route path="maintenance/:listingId" element={<TenantMaintenanceRequest />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
@@ -114,6 +117,7 @@ const App = () => (
                       <Route path="profile" element={<LandlordProfile />} />
                       <Route path="chats" element={<LandlordChats />} />
                       <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
+                      <Route path="maintenance-requests" element={<LandlordMaintenanceRequests />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
