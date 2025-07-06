@@ -3,6 +3,52 @@ export const getApiBaseUrl = () => {
   return import.meta.env.VITE_API_URL || 'http://localhost:3001';
 };
 
+// Rate limiting configuration
+const RATE_LIMIT_CONFIG = {
+  maxRequests: 10,
+  timeWindow: 60000, // 1 minute
+  backoffMultiplier: 2,
+  maxBackoff: 30000, // 30 seconds
+};
+
+// Request tracking
+const requestTracker = {
+  requests: [] as number[],
+  lastBackoff: 0,
+};
+
+// Clean old requests
+const cleanOldRequests = () => {
+  const now = Date.now();
+  requestTracker.requests = requestTracker.requests.filter(
+    time => now - time < RATE_LIMIT_CONFIG.timeWindow
+  );
+};
+
+// Check if we're rate limited
+const isRateLimited = () => {
+  cleanOldRequests();
+  return requestTracker.requests.length >= RATE_LIMIT_CONFIG.maxRequests;
+};
+
+// Calculate backoff delay
+const getBackoffDelay = () => {
+  if (requestTracker.lastBackoff === 0) {
+    requestTracker.lastBackoff = 1000; // Start with 1 second
+  } else {
+    requestTracker.lastBackoff = Math.min(
+      requestTracker.lastBackoff * RATE_LIMIT_CONFIG.backoffMultiplier,
+      RATE_LIMIT_CONFIG.maxBackoff
+    );
+  }
+  return requestTracker.lastBackoff;
+};
+
+// Reset backoff on successful request
+const resetBackoff = () => {
+  requestTracker.lastBackoff = 0;
+};
+
 // Types
 export interface ProfileData {
   id: string;
@@ -37,9 +83,17 @@ class ApiError extends Error {
   }
 }
 
-// Generic fetch wrapper with error handling
+// Generic fetch wrapper with error handling and rate limiting
 export const apiFetch = async (url: string, options: RequestInit = {}): Promise<any> => {
+  if (isRateLimited()) {
+    const delay = getBackoffDelay();
+    console.warn(`Rate limited. Waiting ${delay}ms before retry...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+
   try {
+    requestTracker.requests.push(Date.now());
+
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
@@ -51,29 +105,80 @@ export const apiFetch = async (url: string, options: RequestInit = {}): Promise<
     const data = await response.json();
 
     if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : getBackoffDelay();
+        console.warn(`Rate limited by server. Waiting ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return apiFetch(url, options);
+      }
       throw new ApiError(data.message || 'API request failed', response.status, data);
     }
 
+    resetBackoff();
     return data;
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
     }
-    
-    // Handle network errors
     if (error instanceof TypeError && error.message.includes('fetch')) {
       throw new ApiError('Network error: Unable to connect to server. Please check your connection.', 0);
     }
-    
     throw new ApiError('Unexpected error occurred', 500);
   }
 };
+
+// Cached API responses
+const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+
+// Cached fetch with TTL
+export const cachedApiFetch = async (
+  url: string,
+  options: RequestInit = {},
+  ttl: number = 300000 // 5 minutes default
+): Promise<any> => {
+  const cacheKey = `${url}-${JSON.stringify(options)}`;
+  const cached = cache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < cached.ttl) {
+    console.log('Using cached response for:', url);
+    return cached.data;
+  }
+
+  const data = await apiFetch(url, options);
+
+  cache.set(cacheKey, {
+    data,
+    timestamp: Date.now(),
+    ttl,
+  });
+
+  return data;
+};
+
+// Clear cache
+export const clearApiCache = () => {
+  cache.clear();
+};
+
+// Clear expired cache entries
+export const cleanupCache = () => {
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (now - value.timestamp > value.ttl) {
+      cache.delete(key);
+    }
+  }
+};
+
+// Run cache cleanup every 5 minutes
+setInterval(cleanupCache, 300000);
 
 // Profile creation helper
 const createProfileData = (userId: string, email: string): ProfileData => {
   return {
     id: userId,
-    full_name: email.split('@')[0], // Use email prefix as default name
+    full_name: email.split('@')[0],
     email: email,
     phone: null,
     image_url: null,
@@ -85,28 +190,24 @@ const createProfileData = (userId: string, email: string): ProfileData => {
 const createLandlordProfileData = (userId: string, email: string): LandlordProfileData => {
   return {
     id: userId,
-    full_name: email.split('@')[0], // Use email prefix as default name
+    full_name: email.split('@')[0],
     email: email,
     phone: null,
     image_url: null,
     address: null,
-    documents: [], // Only landlords have documents
+    documents: [],
   };
 };
 
 // Profile synchronization utility functions
 export const profileSyncUtils = {
-  /**
-   * Get profile data from the opposite role to inherit common fields
-   */
   getOppositeProfileData: async (userId: string, currentRole: 'tenant' | 'landlord'): Promise<Partial<ProfileData> | null> => {
     try {
       const oppositeRole = currentRole === 'tenant' ? 'landlord' : 'tenant';
       const result = await profileUtils.getForRole(oppositeRole, userId);
-      
+
       if (result.success && result.data?.data) {
         const oppositeProfile = result.data.data;
-        // Return only common fields
         return {
           full_name: oppositeProfile.full_name,
           phone: oppositeProfile.phone,
@@ -120,18 +221,12 @@ export const profileSyncUtils = {
     return null;
   },
 
-  /**
-   * Sync profile data between tenant and landlord profiles
-   */
   syncProfiles: async (userId: string, updatedRole: 'tenant' | 'landlord', updatedData: Partial<ProfileData>): Promise<void> => {
     try {
       const oppositeRole = updatedRole === 'tenant' ? 'landlord' : 'tenant';
-      
-      // Get the opposite profile to check if it exists
       const oppositeResult = await profileUtils.getForRole(oppositeRole, userId);
-      
+
       if (oppositeResult.success && oppositeResult.data?.data) {
-        // Update the opposite profile with the new common field data
         const commonFields = {
           full_name: updatedData.full_name,
           phone: updatedData.phone,
@@ -139,40 +234,32 @@ export const profileSyncUtils = {
           address: updatedData.address,
         };
 
-        // Remove undefined values
         const fieldsToUpdate = Object.fromEntries(
           Object.entries(commonFields).filter(([_, value]) => value !== undefined)
         );
 
-                 if (Object.keys(fieldsToUpdate).length > 0) {
-           if (oppositeRole === 'tenant') {
-             await tenantApi.update(userId, fieldsToUpdate, true); // Skip sync to avoid infinite loop
-           } else {
-             await landlordApi.update(userId, fieldsToUpdate, true); // Skip sync to avoid infinite loop
-           }
-           console.log(`✅ Synced profile data to ${oppositeRole} profile`);
-         }
+        if (Object.keys(fieldsToUpdate).length > 0) {
+          if (oppositeRole === 'tenant') {
+            await tenantApi.update(userId, fieldsToUpdate, true);
+          } else {
+            await landlordApi.update(userId, fieldsToUpdate, true);
+          }
+          console.log(`✅ Synced profile data to ${oppositeRole} profile`);
+        }
       }
     } catch (error) {
       console.warn('Failed to sync profiles:', error);
-      // Don't throw - sync failure shouldn't break the main update
     }
   },
 };
 
 // Tenant API Functions
 export const tenantApi = {
-  /**
-   * Create a new tenant profile
-   */
   create: async (userId: string, email: string): Promise<ApiResponse> => {
     try {
-      // Try to get data from landlord profile to inherit common fields
       const landlordData = await profileSyncUtils.getOppositeProfileData(userId, 'tenant');
-      
       const profileData = createProfileData(userId, email);
-      
-      // Inherit data from landlord profile if available
+
       if (landlordData) {
         Object.assign(profileData, {
           full_name: landlordData.full_name || profileData.full_name,
@@ -182,11 +269,9 @@ export const tenantApi = {
         });
         console.log('✅ Inherited profile data from landlord profile');
       }
-      
+
       const url = `${getApiBaseUrl()}/api/tenants`;
-      
       console.log('Creating tenant profile:', { userId, email });
-      
       const response = await apiFetch(url, {
         method: 'POST',
         body: JSON.stringify(profileData),
@@ -194,10 +279,8 @@ export const tenantApi = {
 
       console.log('Tenant profile created successfully:', response);
       return { success: true, data: response };
-      
     } catch (error) {
       if (error instanceof ApiError) {
-        // Handle existing profile cases
         if (error.status === 400 && error.data?.message?.includes('already exists')) {
           console.log('Tenant profile already exists - this is fine');
           return { success: true, alreadyExists: true };
@@ -207,19 +290,15 @@ export const tenantApi = {
           return { success: true, alreadyExists: true };
         }
       }
-      
       console.error('Error creating tenant profile:', error);
       throw error;
     }
   },
 
-  /**
-   * Get tenant profile by ID
-   */
   getById: async (tenantId: string): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/tenants/${tenantId}`;
-      const response = await apiFetch(url);
+      const response = await cachedApiFetch(url, {}, 600000);
       return { success: true, data: response };
     } catch (error) {
       console.error('Error fetching tenant profile:', error);
@@ -227,9 +306,6 @@ export const tenantApi = {
     }
   },
 
-  /**
-   * Update tenant profile
-   */
   update: async (tenantId: string, profileData: Partial<ProfileData>, skipSync = false): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/tenants/${tenantId}`;
@@ -238,7 +314,8 @@ export const tenantApi = {
         body: JSON.stringify(profileData),
       });
 
-      // Sync the updated data to landlord profile (only if not already syncing)
+      cache.delete(`${getApiBaseUrl()}/api/tenants/${tenantId}-{}`);
+
       if (!skipSync) {
         await profileSyncUtils.syncProfiles(tenantId, 'tenant', profileData);
       }
@@ -249,21 +326,26 @@ export const tenantApi = {
       throw error;
     }
   },
+
+  getListings: async (tenantId: string): Promise<ApiResponse> => {
+    try {
+      const url = `${getApiBaseUrl()}/api/tenants/${tenantId}/listings`;
+      const response = await cachedApiFetch(url, {}, 300000);
+      return { success: true, data: response };
+    } catch (error) {
+      console.error('Error fetching tenant listings:', error);
+      throw error;
+    }
+  },
 };
 
 // Landlord API Functions
 export const landlordApi = {
-  /**
-   * Create a new landlord profile
-   */
   create: async (userId: string, email: string): Promise<ApiResponse> => {
     try {
-      // Try to get data from tenant profile to inherit common fields
       const tenantData = await profileSyncUtils.getOppositeProfileData(userId, 'landlord');
-      
       const profileData = createLandlordProfileData(userId, email);
-      
-      // Inherit data from tenant profile if available
+
       if (tenantData) {
         Object.assign(profileData, {
           full_name: tenantData.full_name || profileData.full_name,
@@ -273,11 +355,9 @@ export const landlordApi = {
         });
         console.log('✅ Inherited profile data from tenant profile');
       }
-      
+
       const url = `${getApiBaseUrl()}/api/landlords`;
-      
       console.log('Creating landlord profile:', { userId, email });
-      
       const response = await apiFetch(url, {
         method: 'POST',
         body: JSON.stringify(profileData),
@@ -285,10 +365,8 @@ export const landlordApi = {
 
       console.log('Landlord profile created successfully:', response);
       return { success: true, data: response };
-      
     } catch (error) {
       if (error instanceof ApiError) {
-        // Handle existing profile cases
         if (error.status === 400 && error.data?.message?.includes('already exists')) {
           console.log('Landlord profile already exists - this is fine');
           return { success: true, alreadyExists: true };
@@ -298,19 +376,15 @@ export const landlordApi = {
           return { success: true, alreadyExists: true };
         }
       }
-      
       console.error('Error creating landlord profile:', error);
       throw error;
     }
   },
 
-  /**
-   * Get landlord profile by ID
-   */
   getById: async (landlordId: string): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/landlords/${landlordId}`;
-      const response = await apiFetch(url);
+      const response = await cachedApiFetch(url, {}, 600000);
       return { success: true, data: response };
     } catch (error) {
       console.error('Error fetching landlord profile:', error);
@@ -318,9 +392,6 @@ export const landlordApi = {
     }
   },
 
-  /**
-   * Update landlord profile
-   */
   update: async (landlordId: string, profileData: Partial<LandlordProfileData>, skipSync = false): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/landlords/${landlordId}`;
@@ -329,7 +400,8 @@ export const landlordApi = {
         body: JSON.stringify(profileData),
       });
 
-      // Sync the updated data to tenant profile (only if not already syncing)
+      cache.delete(`${getApiBaseUrl()}/api/landlords/${landlordId}-{}`);
+
       if (!skipSync) {
         const { documents, ...commonFields } = profileData;
         await profileSyncUtils.syncProfiles(landlordId, 'landlord', commonFields);
@@ -342,13 +414,10 @@ export const landlordApi = {
     }
   },
 
-  /**
-   * Get landlord's listings
-   */
   getListings: async (landlordId: string): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/landlords/${landlordId}/listings`;
-      const response = await apiFetch(url);
+      const response = await cachedApiFetch(url, {}, 300000);
       return { success: true, data: response };
     } catch (error) {
       console.error('Error fetching landlord listings:', error);
@@ -359,9 +428,6 @@ export const landlordApi = {
 
 // Profile utility functions
 export const profileUtils = {
-  /**
-   * Create profile for specified role
-   */
   createForRole: async (role: 'tenant' | 'landlord', userId: string, email: string): Promise<ApiResponse> => {
     if (role === 'tenant') {
       return tenantApi.create(userId, email);
@@ -372,9 +438,6 @@ export const profileUtils = {
     }
   },
 
-  /**
-   * Get profile for specified role
-   */
   getForRole: async (role: 'tenant' | 'landlord', userId: string): Promise<ApiResponse> => {
     if (role === 'tenant') {
       return tenantApi.getById(userId);
@@ -402,18 +465,13 @@ export const healthApi = {
 
 // Image upload utility functions
 export const imageUtils = {
-  /**
-   * Upload profile image to Supabase storage
-   */
   uploadProfileImage: async (file: File, userId: string): Promise<string> => {
     const { supabase } = await import('@/lib/supabaseClient');
-    
-    // Validate file type
+
     if (!file.type.startsWith('image/')) {
       throw new Error('Please upload an image file.');
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       throw new Error('Please upload an image smaller than 5MB.');
     }
@@ -422,27 +480,20 @@ export const imageUtils = {
     const fileName = `${userId}_${Date.now()}.${fileExt}`;
     const filePath = `profile-images/${fileName}`;
 
-    // Check if buckets exist
-    const { data: buckets, error: bucketsError } = await supabase
-      .storage
-      .listBuckets();
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
 
     if (bucketsError) {
       throw new Error("Failed to check storage buckets");
     }
 
-    // Check if profile-images bucket exists
     const profileBucket = buckets.find(b => b.name === 'profile-images');
     if (!profileBucket) {
-      // Create the bucket if it doesn't exist
-      const { error: createBucketError } = await supabase
-        .storage
-        .createBucket('profile-images', {
-          public: true,
-          allowedMimeTypes: ['image/*'],
-          fileSizeLimit: 5242880 // 5MB
-        });
-      
+      const { error: createBucketError } = await supabase.storage.createBucket('profile-images', {
+        public: true,
+        allowedMimeTypes: ['image/*'],
+        fileSizeLimit: 5242880,
+      });
+
       if (createBucketError) {
         console.error('Error creating profile-images bucket:', createBucketError);
         throw new Error("Failed to create storage bucket for profile images");
@@ -451,69 +502,52 @@ export const imageUtils = {
 
     const { error: uploadError } = await supabase.storage
       .from('profile-images')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true
-      });
+      .upload(filePath, file, { cacheControl: '3600', upsert: true });
 
     if (uploadError) {
       throw uploadError;
     }
 
-    const { data } = supabase.storage
-      .from('profile-images')
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from('profile-images').getPublicUrl(filePath);
 
     return data.publicUrl;
   },
 
-  /**
-   * Delete profile image from Supabase storage
-   */
   deleteProfileImage: async (imageUrl: string): Promise<void> => {
     const { supabase } = await import('@/lib/supabaseClient');
-    
-    // Extract file path from URL
+
     const urlParts = imageUrl.split('/');
     const bucketIndex = urlParts.findIndex(part => part === 'profile-images');
     if (bucketIndex === -1) return;
-    
+
     const filePath = urlParts.slice(bucketIndex + 1).join('/');
-    
-    const { error } = await supabase.storage
-      .from('profile-images')
-      .remove([`profile-images/${filePath}`]);
+
+    const { error } = await supabase.storage.from('profile-images').remove([`profile-images/${filePath}`]);
 
     if (error) {
       console.error('Error deleting image:', error);
-      // Don't throw error as this is not critical
     }
-  }
+  },
 };
 
 // Document upload utility functions
 export const documentUtils = {
-  /**
-   * Upload document to Supabase storage
-   */
   uploadDocument: async (file: File, userId: string, documentType: string): Promise<string> => {
     const { supabase } = await import('@/lib/supabaseClient');
-    
-    // Validate file type (allow common document formats)
+
     const allowedTypes = [
       'application/pdf',
       'image/jpeg',
-      'image/jpg', 
+      'image/jpg',
       'image/png',
       'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
-    
+
     if (!allowedTypes.includes(file.type)) {
       throw new Error('Please upload a PDF, image, or Word document.');
     }
 
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       throw new Error('Please upload a document smaller than 10MB.');
     }
@@ -522,27 +556,18 @@ export const documentUtils = {
     const fileName = `${userId}_${documentType}_${Date.now()}.${fileExt}`;
     const filePath = `documents/${fileName}`;
 
-    // Check if buckets exist
-    const { data: buckets, error: bucketsError } = await supabase
-      .storage
-      .listBuckets();
+const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
 
     if (bucketsError) {
       throw new Error("Failed to check storage buckets");
     }
 
-    // Check if documents bucket exists
     const documentsBucket = buckets.find(b => b.name === 'documents');
     if (!documentsBucket) {
-      // Create the bucket if it doesn't exist
-      const { error: createBucketError } = await supabase
-        .storage
-        .createBucket('documents', {
-          public: false, // Documents should be private
-          allowedMimeTypes: allowedTypes,
-          fileSizeLimit: 10485760 // 10MB
-        });
-      
+      const { error: createBucketError } = await supabase.storage.createBucket('documents', {
+        public: false,
+      });
+
       if (createBucketError) {
         console.error('Error creating documents bucket:', createBucketError);
         throw new Error("Failed to create storage bucket for documents");
@@ -551,65 +576,22 @@ export const documentUtils = {
 
     const { error: uploadError } = await supabase.storage
       .from('documents')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true
-      });
+      .upload(filePath, file, { cacheControl: '3600', upsert: true });
 
     if (uploadError) {
       throw uploadError;
     }
 
-    // Return the file path (not public URL since it's private)
     return filePath;
   },
 
-  /**
-   * Get signed URL for document viewing
-   */
-  getDocumentUrl: async (filePath: string): Promise<string> => {
-    const { supabase } = await import('@/lib/supabaseClient');
-    
-    const { data, error } = await supabase.storage
-      .from('documents')
-      .createSignedUrl(filePath, 3600); // 1 hour expiry
-
-    if (error) {
-      throw error;
-    }
-
-    return data.signedUrl;
-  },
-
-  /**
-   * Delete document from Supabase storage
-   */
   deleteDocument: async (filePath: string): Promise<void> => {
     const { supabase } = await import('@/lib/supabaseClient');
-    
-    const { error } = await supabase.storage
-      .from('documents')
-      .remove([filePath]);
+
+    const { error } = await supabase.storage.from('documents').remove([filePath]);
 
     if (error) {
       console.error('Error deleting document:', error);
-      throw error;
     }
   },
-
-  /**
-   * Extract document type and filename from file path
-   */
-  parseDocumentPath: (filePath: string) => {
-    const fileName = filePath.split('/').pop() || '';
-    const parts = fileName.split('_');
-    if (parts.length >= 3) {
-      const documentType = parts[1];
-      const originalName = parts.slice(2).join('_');
-      return { documentType, originalName };
-    }
-    return { documentType: 'unknown', originalName: fileName };
-  }
 };
-
-export { ApiError };

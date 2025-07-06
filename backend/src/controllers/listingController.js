@@ -81,6 +81,26 @@ export const getListings = async (req, res) => {
             id: listing.tenant_profiles.id?.toString(),
           }
         : undefined,
+      images: Array.isArray(listing.images)
+        ? listing.images
+        : (typeof listing.images === 'string' && listing.images.trim().startsWith('[')
+            ? JSON.parse(listing.images)
+            : []),
+      amenities: Array.isArray(listing.amenities)
+        ? listing.amenities
+        : (typeof listing.amenities === 'string' && listing.amenities.trim().startsWith('[')
+            ? JSON.parse(listing.amenities)
+            : []),
+      requirements: Array.isArray(listing.requirements)
+        ? listing.requirements
+        : (typeof listing.requirements === 'string' && listing.requirements.trim().startsWith('[')
+            ? JSON.parse(listing.requirements)
+            : (listing.requirements ? [listing.requirements] : [])),
+      house_rules: Array.isArray(listing.house_rules)
+        ? listing.house_rules
+        : (typeof listing.house_rules === 'string' && listing.house_rules.trim().startsWith('[')
+            ? JSON.parse(listing.house_rules)
+            : (listing.house_rules ? [listing.house_rules] : [])),
     }));
 
     res.json(paginatedResponse(safeListings, parseInt(page), take, total));
@@ -125,10 +145,36 @@ export const getListingById = async (req, res) => {
         .json(errorResponse(new Error("Listing not found"), 404));
     }
 
-    // Convert BigInt to string for JSON serialization
+    // Convert BigInt to string for JSON serialization and map landlord/tenant data
     const responseData = {
       ...listing,
       id: listing.id.toString(),
+      landlord_id: listing.landlord_id?.toString(),
+      tenant_id: listing.tenant_id?.toString(),
+      landlord_name: listing.landlord_profiles?.full_name,
+      landlord_phone: listing.landlord_profiles?.phone,
+      tenant_name: listing.tenant_profiles?.full_name,
+      tenant_phone: listing.tenant_profiles?.phone,
+      images: Array.isArray(listing.images)
+        ? listing.images
+        : (typeof listing.images === 'string' && listing.images.trim().startsWith('[')
+            ? JSON.parse(listing.images)
+            : []),
+      amenities: Array.isArray(listing.amenities)
+        ? listing.amenities
+        : (typeof listing.amenities === 'string' && listing.amenities.trim().startsWith('[')
+            ? JSON.parse(listing.amenities)
+            : []),
+      requirements: Array.isArray(listing.requirements)
+        ? listing.requirements
+        : (typeof listing.requirements === 'string' && listing.requirements.trim().startsWith('[')
+            ? JSON.parse(listing.requirements)
+            : (listing.requirements ? [listing.requirements] : [])),
+      house_rules: Array.isArray(listing.house_rules)
+        ? listing.house_rules
+        : (typeof listing.house_rules === 'string' && listing.house_rules.trim().startsWith('[')
+            ? JSON.parse(listing.house_rules)
+            : (listing.house_rules ? [listing.house_rules] : [])),
     };
 
     res.json(successResponse(responseData, "Listing retrieved successfully"));

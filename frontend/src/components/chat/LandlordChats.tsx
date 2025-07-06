@@ -14,9 +14,10 @@ interface Chat {
   landlord_id: string;
   property_id: string;
   created_at: string;
-  // Optionally, add these if available from backend:
   tenantName?: string;
   propertyTitle?: string;
+  property_name?: string;
+  tenant_name?: string;
   lastMessage?: string;
   propertyImage?: string;
 }
@@ -84,14 +85,15 @@ export function LandlordChats() {
             </div>
           </div>
         </header>
-        <div className="h-[calc(100vh-4rem)]">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <ChatWindow
             chatRoomId={selectedChat.id}
-            propertyTitle={selectedChat.propertyTitle}
+            propertyTitle={selectedChat.propertyTitle || selectedChat.property_name}
             landlordName={user?.email || 'You'}
+            tenantName={selectedChat.tenant_name}
             propertyId={selectedChat.property_id}
             landlordId={selectedChat.landlord_id}
-            isFullPage={true}
+            isFullPage={false}
           />
         </div>
       </div>
@@ -169,11 +171,11 @@ export function LandlordChats() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
-                        {chat.propertyTitle || `Property ${chat.property_id}`}
+                        {chat.property_name}
                       </h3>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
-                      <span className="font-medium">Tenant:</span> {chat.tenantName || chat.tenant_id}
+                      <span className="font-medium">Tenant:</span> {chat.tenant_name}
                     </p>
                     <p className="text-gray-700 mb-2 line-clamp-2">
                       {chat.lastMessage ? chat.lastMessage : ''}
@@ -188,6 +190,23 @@ export function LandlordChats() {
                     >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Reply
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Are you sure you want to delete this chat? This cannot be undone.')) {
+                          try {
+                            await chatApi.deleteChatRoom(chat.id, user?.id);
+                            setChats(prev => prev.filter(c => c.id !== chat.id));
+                          } catch (err) {
+                            alert('Failed to delete chat.');
+                          }
+                        }
+                      }}
+                    >
+                      Delete
                     </Button>
                   </div>
                 </div>

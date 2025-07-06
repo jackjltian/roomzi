@@ -6,6 +6,7 @@ import {
   sendMessage,
   getChatMessages,
   deleteChat,
+  deleteMessage,
 } from "../controllers/chatController.js";
 
 const router = express.Router();
@@ -27,5 +28,8 @@ router.get("/:chatId/messages", getChatMessages);
 
 // POST /api/chats/messages - Send a message
 router.post("/messages", sendMessage);
+
+// DELETE /api/chats/messages/:id - Delete a single message
+router.delete("/messages/:id", deleteMessage);
 
 export default router;

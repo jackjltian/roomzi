@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin } from 'lucide-react';
+import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
 
 const TenantMyHouse = () => {
   const navigate = useNavigate();
@@ -180,6 +180,10 @@ const TenantMyHouse = () => {
                 <Button variant="outline" className="justify-start">
                   <User className="w-4 h-4 mr-2" />
                   Lease Renewal
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => navigate('/tenant/financial-account')}>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Financial Account
                 </Button>
               </div>
             </Card>

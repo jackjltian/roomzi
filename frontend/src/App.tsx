@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -18,24 +18,36 @@ import ManageListing from "./pages/ManageListing";
 import Payments from "./pages/Payments";
 import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
-import Payments from "./pages/PaymentHistory";
 
-const queryClient = new QueryClient();
+import { queryClient } from "./lib/queryClient";
+import FinancialAccount from "./pages/FinancialAccount";
+import ScrollToTop from './components/ScrollToTop';
+import FAQ from './pages/FAQ';
+
+// Removed duplicate import of Payments (PaymentHistory)
+// import Payments from "./pages/PaymentHistory";
+
+// Removed duplicate declaration of queryClient
+// const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
+        <SocketProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
             <Routes>
               {/* Public routes - ONLY Index page is public */}
               <Route path="/" element={<Index />} />
+              <Route path="/faq" element={<FAQ />} />
               
               {/* Auth-related routes - don't require existing auth but handle auth flow */}
               <Route 
@@ -79,29 +91,27 @@ const App = () => (
               <Route 
                 path="/tenant/*" 
                 element={
-                  <RoleProtectedRoute requiredRole="tenant">
-                    <Routes>
-                      <Route path="/" element={<TenantDashboard />} />
-                      <Route path="profile" element={<TenantProfile />} />
-                      <Route path="matches" element={<TenantMatches />} />
-                      <Route path="my-house" element={<TenantMyHouse />} />
-                      <Route path="payments" element={<Payments />} />
-                    </Routes>
-                  </RoleProtectedRoute>
-                } 
-              />
+                  <RoleProtectedRoute requiredRole="tenant" />
+                }
+              >
+                <Route path="/" element={<TenantDashboard />} />
+                <Route path="profile" element={<TenantProfile />} />
+                <Route path="matches" element={<TenantMatches />} />
+                <Route path="my-house" element={<TenantMyHouse />} />
+                <Route path="financial-account" element={<FinancialAccount />} />
+                <Route path="payments" element={<Payments />} />
+              </Route>
+
               <Route 
                 path="/landlord/*" 
                 element={
-                  <RoleProtectedRoute requiredRole="landlord">
-                    <Routes>
-                      <Route path="/" element={<LandlordDashboard />} />
-                      <Route path="profile" element={<LandlordProfile />} />
-                      <Route path="chats" element={<LandlordChats />} />
-                    </Routes>
-                  </RoleProtectedRoute>
-                } 
-              />
+                  <RoleProtectedRoute requiredRole="landlord" />
+                }
+              >
+                <Route path="/" element={<LandlordDashboard />} />
+                <Route path="profile" element={<LandlordProfile />} />
+                <Route path="chats" element={<LandlordChats />} />
+              </Route>
               
               {/* General protected routes - require auth */}
               <Route 
@@ -148,8 +158,9 @@ const App = () => (
               />
             </Routes>
           </TooltipProvider>
-        </AuthProvider>
-      </BrowserRouter>
+        </SocketProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 

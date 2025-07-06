@@ -14,13 +14,19 @@ const TenantMatches = () => {
     propertyImage: string;
     landlordName: string;
     landlordImage?: string;
+    landlordId: string;
+    propertyId: string;
   } | null>(null);
 
   const matches = [
     {
       id: 1,
+      propertyId: 'property1',
+      landlordId: 'landlord1',
       propertyTitle: "Modern Studio in Downtown",
       landlordName: "Sarah Johnson",
+      landlordImage: "https://randomuser.me/api/portraits/women/1.jpg",
+      landlord_name: "Sarah Johnson",
       message: "Hi! I'm interested in your property. Can we schedule a viewing?",
       time: "2 hours ago",
       unread: true,
@@ -28,8 +34,12 @@ const TenantMatches = () => {
     },
     {
       id: 2,
+      propertyId: 'property2',
+      landlordId: 'landlord2',
       propertyTitle: "Cozy 1BR Apartment",
       landlordName: "Mike Chen",
+      landlordImage: "https://randomuser.me/api/portraits/men/2.jpg",
+      landlord_name: "Mike Chen",
       message: "The viewing is confirmed for tomorrow at 3 PM.",
       time: "1 day ago",
       unread: false,
@@ -37,8 +47,12 @@ const TenantMatches = () => {
     },
     {
       id: 3,
+      propertyId: 'property3',
+      landlordId: 'landlord3',
       propertyTitle: "Shared Room in House",
       landlordName: "Emily Davis",
+      landlordImage: "https://randomuser.me/api/portraits/women/3.jpg",
+      landlord_name: "Emily Davis",
       message: "Thank you for your interest. Let me know when you're available.",
       time: "3 days ago",
       unread: false,
@@ -51,6 +65,9 @@ const TenantMatches = () => {
       propertyTitle: match.propertyTitle,
       propertyImage: match.propertyImage,
       landlordName: match.landlordName,
+      landlordImage: match.landlordImage,
+      landlordId: match.landlordId,
+      propertyId: match.propertyId,
     });
   };
 
@@ -209,11 +226,14 @@ const TenantMatches = () => {
             >
               <X className="h-4 w-4" />
             </Button>
+
             <ChatWindow
               propertyTitle={selectedChat.propertyTitle}
               propertyImage={selectedChat.propertyImage}
               landlordName={selectedChat.landlordName}
               landlordImage={selectedChat.landlordImage}
+              landlordId={selectedChat.landlordId}
+              propertyId={selectedChat.propertyId}
             />
           </div>
         </div>
