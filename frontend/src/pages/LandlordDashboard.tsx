@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut } from 'lucide-react';
+import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
+  const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
+  const [showBanner, setShowBanner] = useState(false);
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
@@ -58,6 +61,24 @@ const LandlordDashboard = () => {
     }
 
     fetchProperties();
+  }, [userId]);
+
+  useEffect(() => {
+    async function fetchPendingMaintenance() {
+      if (!userId) return;
+      const lastSeen = localStorage.getItem('maintenance_last_seen') || '0';
+      const { data, error } = await supabase
+        .from('maintenance_requests')
+        .select('createdAt', { count: 'exact' })
+        .eq('landlordId', userId)
+        .eq('status', 'Pending');
+      if (!error && data) {
+        const newRequests = data.filter((r) => new Date(r.createdAt).getTime() > Number(lastSeen));
+        setPendingMaintenanceCount(newRequests.length);
+        setShowBanner(newRequests.length > 0);
+      }
+    }
+    fetchPendingMaintenance();
   }, [userId]);
 
   return (
@@ -111,6 +132,19 @@ const LandlordDashboard = () => {
             <p className="text-gray-600">Manage your properties and connect with tenants</p>
           </div>
         </div>
+
+        {/* Notification banner for pending requests */}
+        {showBanner && (
+          <div className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded mb-4 flex items-center gap-2 shadow">
+            <Wrench className="w-5 h-5" />
+            {pendingMaintenanceCount} new maintenance request{pendingMaintenanceCount > 1 ? 's' : ''}!
+            <Button size="sm" variant="link" onClick={() => {
+              navigate('/landlord/maintenance-requests');
+            }}>
+              View
+            </Button>
+          </div>
+        )}
 
         {/* Stats Overview */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -260,6 +294,20 @@ const LandlordDashboard = () => {
           >
             <Plus className="w-5 h-5 mb-1" />
             <span className="text-xs">Add Listing</span>
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 relative"
+            onClick={() => navigate('/landlord/maintenance-requests')}
+          >
+            <Wrench className="w-5 h-5 mb-1" />
+            <span className="text-xs">Maintenance</span>
+            {pendingMaintenanceCount > 0 && (
+              <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                {pendingMaintenanceCount}
+              </span>
+            )}
           </Button>
           <Button 
             variant="ghost" 

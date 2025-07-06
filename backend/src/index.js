@@ -12,6 +12,7 @@ import { initializeSocket } from "./config/socket.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import multer from 'multer';
 import path from 'path';
+import maintenanceRoutes from './routes/maintenanceRoutes.js';
 
 const app = express();
 const server = createServer(app);
@@ -96,6 +97,7 @@ app.use("/api/payments", paymentRoutes);
 // API routes
 app.use("/api", apiRoutes);
 app.use("/api/chat", chatRoutes);
+app.use('/api/maintenance-requests', maintenanceRoutes);
 
 // Basic health check route
 app.get("/api/health", (req, res) => {
