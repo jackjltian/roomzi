@@ -3,20 +3,29 @@ import express from "express";
 import cors from "cors";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { successResponse } from "./utils/response.js";
-import { supabase } from "./config/supabase.js";
+import { supabase, initializeStorageBuckets } from "./config/supabase.js";
 import { landlordRouter } from "./routes/index.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
 import chatRoutes from "./routes/chat.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: [
+    process.env.FRONTEND_URL || "http://localhost:8080",
+    "http://localhost:8081",
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "X-Requested-With",
+  ],
   credentials: true,
 };
 
@@ -25,14 +34,15 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes
-app.use('/api/landlord', landlordRouter);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/landlord", landlordRouter);
 
 // API routes
 app.use("/api", apiRoutes);
-app.use('/api/chat', chatRoutes);
+app.use("/api/chat", chatRoutes);
 
 // Routes
-app.use('/api/landlord', landlordRouter);
+app.use("/api/landlord", landlordRouter);
 
 // Basic health check route
 app.get("/api/health", (req, res) => {
@@ -65,7 +75,7 @@ process.on("SIGTERM", async () => {
 });
 
 // Start server
-app.listen(port, () => {
+app.listen(port, async () => {
   console.log(`
 🚀 Server is running!
 📡 Port: ${port}
@@ -78,4 +88,7 @@ app.listen(port, () => {
    • /api/listings - Property listings
    • /api/chats - Messaging system
   `);
+
+  // Initialize storage buckets
+  await initializeStorageBuckets();
 });

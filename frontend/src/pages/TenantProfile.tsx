@@ -1,23 +1,101 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2 } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2, Save, X } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { landlordApi, ApiError } from '@/utils/api';
+
+import { landlordApi, ApiError, apiFetch, getApiBaseUrl, tenantApi } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
+import { supabase } from '@/lib/supabaseClient';
+
+interface TenantProfileData {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  image_url?: string | null;
+  address?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
 
 const TenantProfile = () => {
   const navigate = useNavigate();
-  const { currentRole, setUserRole } = useUserRole();
+  const { setUserRole } = useUserRole();
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
   const [switching, setSwitching] = useState(false);
+
+  const [name, setName] = useState(user?.user_metadata?.fullName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.user_metadata?.phone || '');
+  const [location, setLocation] = useState(user?.user_metadata?.location || '');
+  const [saving, setSaving] = useState(false);
+  // Removed duplicate saving here
+
+  const [profilePhoto, setProfilePhoto] = useState(user?.user_metadata?.profilePhoto || '');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(true);
+  const [profileData, setProfileData] = useState<TenantProfileData | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [formData, setFormData] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    address: '',
+  });
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.id) return;
+
+      try {
+        setLoading(true);
+        const result = await tenantApi.getById(user.id);
+
+        if (result.success && result.data) {
+          setProfileData(result.data.data);
+          setFormData({
+            full_name: result.data.data.full_name || '',
+            email: result.data.data.email || '',
+            phone: result.data.data.phone || '',
+            address: result.data.data.address || '',
+          });
+        } else {
+          // Create profile if not found
+          const createResult = await tenantApi.create(user.id, user.email || '');
+          if (createResult.success && createResult.data) {
+            setProfileData(createResult.data.data);
+            setFormData({
+              full_name: user.user_metadata?.full_name || '',
+              email: user.email || '',
+              phone: '',
+              address: '',
+            });
+            setEditMode(true);
+          }
+        }
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load profile data.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfile();
+  }, [user, toast]);
 
   const handleSwitchToLandlord = async () => {
     if (!user) {
@@ -30,13 +108,10 @@ const TenantProfile = () => {
     }
 
     setSwitching(true);
-    
+
     try {
-      console.log('Switching to landlord role...');
-      
-      // Step 1: Create landlord profile if needed using centralized API
       const profileResult = await landlordApi.create(user.id, user.email || '');
-      
+
       if (profileResult.success) {
         if (profileResult.alreadyExists) {
           console.log('✅ Landlord profile already exists - user can proceed');
@@ -44,27 +119,21 @@ const TenantProfile = () => {
           console.log('✅ New landlord profile created successfully');
         }
       }
-      
-      // Step 2: Update Supabase metadata
+
       await updateUserMetadata('landlord');
-      
-      // Step 3: Update local role
       setUserRole('landlord');
-      
-      // Step 4: Show success and navigate
+
       toast({
         title: "Role Switched",
         description: "Welcome to your landlord dashboard!",
         variant: "default",
       });
-      
+
       navigate('/landlord');
-      
+      window.location.reload();
     } catch (error) {
-      console.error('Error switching to landlord:', error);
-      
       let errorMessage = "Unable to switch to landlord role. Please try again.";
-      
+
       if (error instanceof ApiError) {
         if (error.status === 0) {
           errorMessage = "Unable to connect to server. Please check your internet connection.";
@@ -74,7 +143,7 @@ const TenantProfile = () => {
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: "Switch Failed",
         description: errorMessage,
@@ -85,12 +154,147 @@ const TenantProfile = () => {
     }
   };
 
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveChanges = async () => {
+    if (!user?.id) return;
+
+    setSaving(true);
+
+    try {
+      const updateResult = await tenantApi.update(user.id, {
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone || null,
+        address: formData.address || null,
+        image_url: profilePhoto,
+      });
+
+      if (updateResult.success) {
+        setProfileData(prev => prev ? {
+          ...prev,
+          ...formData,
+          phone: formData.phone || null,
+          address: formData.address || null,
+        } : null);
+
+        setEditMode(false);
+
+        window.dispatchEvent(new CustomEvent('tenantProfileUpdated', {
+          detail: {
+            fullName: formData.full_name,
+            email: formData.email,
+            phone: formData.phone || null,
+            address: formData.address || null,
+            profilePhoto,
+          }
+        }));
+
+        navigate('/tenant', { state: { profileUpdated: true } });
+
+        toast({
+          title: "Success",
+          description: "Profile updated successfully!",
+          variant: "default",
+        });
+      } else {
+        throw new Error(updateResult.message || 'Failed to update profile');
+      }
+    } catch (error) {
+      toast({
+        title: 'Update Failed',
+        description: (error as Error)?.message || 'Failed to save profile changes. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCameraButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingPhoto(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `profile-photos/${fileName}`;
+      // Show preview immediately
+      const localPreview = URL.createObjectURL(file);
+      setProfilePhoto(localPreview);
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('profile-photos')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      // Get public URL
+      const { data } = supabase.storage.from('profile-photos').getPublicUrl(filePath);
+      if (!data?.publicUrl) throw new Error('Failed to get public URL');
+      setProfilePhoto(data.publicUrl);
+      // Update user metadata/profile with new photo URL
+      const response = await apiFetch(`/api/tenant/update-profile`, {
+        method: 'POST',
+        body: JSON.stringify({
+          id: user.id,
+          profilePhoto: data.publicUrl,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.success) throw new Error(response.message || 'Failed to update profile photo');
+      toast({
+        title: 'Profile Photo Updated',
+        description: 'Your new photo has been saved.',
+        variant: 'default',
+      });
+    } catch (error) {
+      toast({
+        title: 'Photo Upload Failed',
+        description: (error as Error)?.message || 'Could not upload photo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }; // <-- added missing closing brace here
+
+  const handleCancelEdit = () => {
+    if (profileData) {
+      setFormData({
+        full_name: profileData.full_name || '',
+        email: profileData.email || '',
+        phone: profileData.phone || '',
+        address: profileData.address || '',
+      });
+    }
+    setEditMode(false);
+  };
+
   const tabs = [
     { id: 'info', label: 'Personal Info', icon: User },
     { id: 'docs', label: 'Documents', icon: FileText },
     { id: 'credit', label: 'Credit Score', icon: CreditCard },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-roomzi-blue" />
+          <p className="text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -119,39 +323,72 @@ const TenantProfile = () => {
         <Card className="p-6 mb-6">
           <div className="flex items-center space-x-6">
             <div className="relative">
-              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center">
-                <User className="w-12 h-12 text-gray-500" />
+              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                {profilePhoto ? (
+                  <img src={profilePhoto} alt="Profile" className="w-24 h-24 object-cover" />
+                ) : (
+                  <User className="w-12 h-12 text-gray-500" />
+                )}
               </div>
               <Button
                 size="sm"
                 className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
+                onClick={handleCameraButtonClick}
+                disabled={uploadingPhoto}
+                aria-label="Change profile photo"
               >
-                <Camera className="w-4 h-4" />
+                {uploadingPhoto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleProfilePhotoChange}
+              />
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900">John Doe</h2>
-              <p className="text-gray-600">john.doe@email.com</p>
-              <p className="text-gray-600">+1 (555) 123-4567</p>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {profileData?.full_name || 'Tenant'}
+              </h2>
+              <p className="text-gray-600">{profileData?.email}</p>
+              {profileData?.phone && (
+                <p className="text-gray-600">{profileData.phone}</p>
+              )}
+              {profileData?.address && (
+                <p className="text-gray-600">{profileData.address}</p>
+              )}
               <Badge className="mt-2 bg-green-100 text-green-800">Verified</Badge>
             </div>
-            <Button
-              onClick={handleSwitchToLandlord}
-              variant="outline"
-              className="flex items-center"
-              disabled={switching}
-            >
-              {switching ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Home className="w-4 h-4 mr-2" />
+            <div className="flex gap-2">
+              {!editMode && (
+                <Button
+                  onClick={() => setEditMode(true)}
+                  variant="outline"
+                  className="flex items-center"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Edit Profile
+                </Button>
               )}
-              {switching ? 'Switching...' : 'Switch to Landlord'}
-            </Button>
+              <Button
+                onClick={handleSwitchToLandlord}
+                variant="outline"
+                className="flex items-center"
+                disabled={switching}
+              >
+                {switching ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Home className="w-4 h-4 mr-2" />
+                )}
+                {switching ? 'Switching...' : 'Switch to Landlord'}
+              </Button>
+            </div>
           </div>
         </Card>
 
-        {/* Tab Navigation */}
+        {/* Tabs */}
         <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
           {tabs.map((tab) => (
             <button
@@ -172,99 +409,80 @@ const TenantProfile = () => {
         {/* Tab Content */}
         {activeTab === 'info' && (
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Personal Information</h3>
+              {editMode && (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCancelEdit}
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center"
+                  >
+                    <X className="w-4 h-4 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSaveChanges}
+                    size="sm"
+                    className="flex items-center roomzi-gradient"
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4 mr-1" />
+                    )}
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
+            </div>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Full Name
                 </label>
-                <Input defaultValue="John Doe" />
+                <Input 
+                  value={formData.full_name}
+                  onChange={(e) => handleInputChange('full_name', e.target.value)}
+                  disabled={!editMode}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
-                <Input defaultValue="john.doe@email.com" />
+                <Input 
+                  value={formData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  disabled={!editMode}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
-                <Input defaultValue="+1 (555) 123-4567" />
+                <Input 
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  disabled={!editMode}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Location
                 </label>
-                <Input defaultValue="New York, NY" />
-              </div>
-            </div>
-            <Button className="mt-4 roomzi-gradient">Save Changes</Button>
-          </Card>
-        )}
-
-        {activeTab === 'docs' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Verification Documents</h3>
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Identity Proof</p>
-                <Button variant="outline">Choose File</Button>
-              </div>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Employment Letter / Enrollment Letter</p>
-                <Button variant="outline">Choose File</Button>
-              </div>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Rental History</p>
-                <Button variant="outline">Choose File</Button>
+                <Input 
+                  value={formData.address}
+                  onChange={(e) => handleInputChange('address', e.target.value)}
+                  disabled={!editMode}
+                />
               </div>
             </div>
           </Card>
         )}
-
-        {activeTab === 'credit' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Credit Score</h3>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600 mb-2">Upload Credit Score Report</p>
-              <Button variant="outline">Choose File</Button>
-            </div>
-          </Card>
-        )}
-
-        {activeTab === 'settings' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Settings</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Email Notifications</h4>
-                  <p className="text-sm text-gray-600">Receive updates about matches and messages</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Privacy Settings</h4>
-                  <p className="text-sm text-gray-600">Control who can see your profile</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Account Settings</h4>
-                  <p className="text-sm text-gray-600">Change password and security settings</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-            </div>
-          </Card>
-        )}
+        {/* TODO: add content for other tabs */}
       </div>
     </div>
   );
