@@ -23,6 +23,8 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
+import PaymentHistory from "./pages/PaymentHistory";
+import LandlordPayments from './pages/LandlordPayments';
 
 import { queryClient } from "./lib/queryClient";
 import FinancialAccount from "./pages/FinancialAccount";
@@ -91,27 +93,31 @@ const App = () => (
               <Route 
                 path="/tenant/*" 
                 element={
-                  <RoleProtectedRoute requiredRole="tenant" />
-                }
-              >
-                <Route index element={<TenantDashboard />} />
-                <Route path="profile" element={<TenantProfile />} />
-                <Route path="matches" element={<TenantMatches />} />
-                <Route path="my-house" element={<TenantMyHouse />} />
-                <Route path="financial-account" element={<FinancialAccount />} />
-                <Route path="payments" element={<Payments />} />
-              </Route>
-
+                  <RoleProtectedRoute requiredRole="tenant">
+                    <Routes>
+                      <Route path="/" element={<TenantDashboard />} />
+                      <Route path="profile" element={<TenantProfile />} />
+                      <Route path="matches" element={<TenantMatches />} />
+                      <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="payments/:listingId" element={<PaymentHistory/>} />
+                      <Route path="payments" element={<Payments />} />
+                    </Routes>
+                  </RoleProtectedRoute>
+                } 
+              />
               <Route 
                 path="/landlord/*" 
                 element={
-                  <RoleProtectedRoute requiredRole="landlord" />
-                }
-              >
-                <Route index element={<LandlordDashboard />} />
-                <Route path="profile" element={<LandlordProfile />} />
-                <Route path="chats" element={<LandlordChats />} />
-              </Route>
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <Routes>
+                      <Route path="/" element={<LandlordDashboard />} />
+                      <Route path="profile" element={<LandlordProfile />} />
+                      <Route path="chats" element={<LandlordChats />} />
+                      <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
+                    </Routes>
+                  </RoleProtectedRoute>
+                } 
+              />
               
               {/* General protected routes - require auth */}
               <Route 

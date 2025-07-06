@@ -3,9 +3,13 @@ import landlordRoutes from "./landlordRoutes.js";
 import tenantRoutes from "./tenantRoutes.js";
 import listingRoutes from "./listingRoutes.js";
 import chatRoutes from "./chatRoutes.js";
+import paymentRoutes from "./paymentRoutes.js";
 import { createListing, getListings } from "../controllers/landlordController.js";
 
 const router = express.Router();
+
+// Create landlord router
+const landlordRouter = express.Router();
 
 // Health check
 router.get("/health", (req, res) => {
@@ -22,8 +26,8 @@ router.use("/landlords", landlordRoutes);
 router.use("/tenants", tenantRoutes);
 router.use("/listings", listingRoutes);
 router.use("/chats", chatRoutes);
-
-export const landlordRouter = express.Router();
+router.use("/payments", paymentRoutes);
+router.use("/landlord", landlordRouter);
 
 landlordRouter.post('/create-listing', createListing);
 landlordRouter.get('/get-listings/:id', getListings);

@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Home, Image, MapPin, User, Calendar, Settings, MessageCircle, ChartArea, BarChart } from 'lucide-react';
+import { ArrowLeft, Home, Image, MapPin, User, Calendar, Settings, MessageCircle, ChartArea, BarChart, FileText } from 'lucide-react';
 import Map from '@/components/Map';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ChatWindow } from '@/components/chat/ChatWindow';
@@ -101,10 +101,10 @@ const Payments = () => {
                 
                 const payments = allPayments.flat();
                 
-                // Fetch tenant names for each payment
+                // Fetch tenant names for each payment with better error handling
                 const paymentsWithTenant = await Promise.all(
                     payments.map(async (payment) => {
-                        let tenantName = 'Unknown Tenant';
+                        let tenantName = `Tenant ${payment.tenantId ? payment.tenantId.slice(0, 8) : 'Unknown'}`;
                         
                         if (payment.tenantId) {
                             try {
@@ -115,14 +115,23 @@ const Payments = () => {
                                     },
                                     credentials: 'include',
                                 });
+                                
                                 if (tenantResponse.ok) {
                                     const tenantData = await tenantResponse.json();
-                                    if (tenantData.success && tenantData.data) {
+                                    console.log('Tenant response:', tenantData);
+                                    
+                                    if (tenantData.success && tenantData.data && tenantData.data.full_name) {
+                                        tenantName = tenantData.data.full_name;
+                                    } else if (tenantData.data && tenantData.data.full_name) {
                                         tenantName = tenantData.data.full_name;
                                     }
+                                } else {
+                                    console.warn(`Failed to fetch tenant ${payment.tenantId}: ${tenantResponse.status}`);
+                                    // Keep the default tenant name
                                 }
                             } catch (error) {
-                                console.error('Error fetching tenant name:', error);
+                                console.warn('Error fetching tenant name:', error);
+                                // Keep the default tenant name
                             }
                         }
                         
@@ -152,21 +161,24 @@ const Payments = () => {
     
     payments.forEach(payment => {
         try {
-            const date = new Date(payment.date);
-            const monthYear = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-            const listingTitle = payment.listingTitle || 'Unknown Listing';
-            
-            if (!monthlyData[monthYear]) {
-                monthlyData[monthYear] = {};
+            // Only include approved payments in the chart
+            if (payment.status === 'Approved') {
+                const date = new Date(payment.date);
+                const monthYear = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                const listingTitle = payment.listingTitle || 'Unknown Listing';
+                
+                if (!monthlyData[monthYear]) {
+                    monthlyData[monthYear] = {};
+                }
+                if (!monthlyData[monthYear][listingTitle]) {
+                    monthlyData[monthYear][listingTitle] = 0;
+                }
+                
+                const amount = parseFloat(payment.amount) || 0;
+                monthlyData[monthYear][listingTitle] += amount;
+                
+                listingGroups[listingTitle] = true;
             }
-            if (!monthlyData[monthYear][listingTitle]) {
-                monthlyData[monthYear][listingTitle] = 0;
-            }
-            
-            const amount = parseFloat(payment.amount) || 0;
-            monthlyData[monthYear][listingTitle] += amount;
-            
-            listingGroups[listingTitle] = true;
         } catch (error) {
             console.error('Error processing payment for chart:', error);
         }
@@ -304,8 +316,36 @@ const Payments = () => {
                                                 <div className="text-right">
                                                     <p className="text-sm text-gray-600">{payment.listingTitle || 'Unknown Listing'}</p>
                                                     <p className="text-sm text-gray-600">{payment.tenantName || 'Unknown Tenant'}</p>
-                                                    <p className="text-sm text-gray-600">Status: {payment.status}</p>
+                                                    <div className="flex items-center justify-end mt-1">
+                                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                            payment.status === 'Approved' 
+                                                                ? 'bg-green-100 text-green-800' 
+                                                                : payment.status === 'Pending'
+                                                                ? 'bg-yellow-100 text-yellow-800'
+                                                                : 'bg-red-100 text-red-800'
+                                                        }`}>
+                                                            {payment.status}
+                                                        </span>
+                                                    </div>
                                                 </div>
+                                            </div>
+                                            <div className="flex justify-end mt-2">
+                                                {payment.proofUrl ? (
+                                                    <a 
+                                                        href={`http://localhost:3001${payment.proofUrl}`} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="flex items-center text-blue-600 hover:underline text-sm"
+                                                    >
+                                                        <FileText className="w-4 h-4 mr-1" />
+                                                        View Proof
+                                                    </a>
+                                                ) : (
+                                                    <span className="flex items-center text-gray-400 text-sm">
+                                                        <FileText className="w-4 h-4 mr-1" />
+                                                        No Proof
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
