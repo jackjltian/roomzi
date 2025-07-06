@@ -94,7 +94,7 @@ const App = () => (
                   <RoleProtectedRoute requiredRole="tenant" />
                 }
               >
-                <Route path="/" element={<TenantDashboard />} />
+                <Route index element={<TenantDashboard />} />
                 <Route path="profile" element={<TenantProfile />} />
                 <Route path="matches" element={<TenantMatches />} />
                 <Route path="my-house" element={<TenantMyHouse />} />
@@ -108,7 +108,7 @@ const App = () => (
                   <RoleProtectedRoute requiredRole="landlord" />
                 }
               >
-                <Route path="/" element={<LandlordDashboard />} />
+                <Route index element={<LandlordDashboard />} />
                 <Route path="profile" element={<LandlordProfile />} />
                 <Route path="chats" element={<LandlordChats />} />
               </Route>

@@ -71,7 +71,7 @@ export interface ApiResponse<T = any> {
 }
 
 // Generic API error handling
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
   data?: any;
 
