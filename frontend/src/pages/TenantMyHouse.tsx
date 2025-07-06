@@ -165,9 +165,9 @@ const TenantMyHouse = () => {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
               <div className="grid md:grid-cols-2 gap-4">
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate('/tenant/payments')}>
                   <DollarSign className="w-4 h-4 mr-2" />
-                  Payment History
+                  Payments
                 </Button>
                 <Button variant="outline" className="justify-start">
                   <Home className="w-4 h-4 mr-2" />

@@ -7,23 +7,26 @@ export const useUserRole = () => {
   
   /**
    * Get current user role with fallback priority:
-   * 1. Supabase user metadata
-   * 2. localStorage backup
+   * 1. localStorage (primary - most reliable)
+   * 2. Supabase user metadata (fallback)
    */
   const getCurrentRole = (): 'tenant' | 'landlord' | null => {
-    const metadataRole = user?.user_metadata?.role;
     const localStorageRole = localStorage.getItem(STORAGE_KEYS.SELECTED_ROLE) as 'tenant' | 'landlord' | null;
+    const metadataRole = user?.user_metadata?.role;
     
-    // Prefer metadata over localStorage
+    // Prefer localStorage as primary source
+    if (localStorageRole === USER_ROLES.TENANT || localStorageRole === USER_ROLES.LANDLORD) {
+      return localStorageRole;
+    }
+    
+    // Fallback to metadata if localStorage is empty
     if (metadataRole === USER_ROLES.TENANT || metadataRole === USER_ROLES.LANDLORD) {
-      // Sync localStorage if different
-      if (localStorageRole !== metadataRole) {
-        localStorage.setItem(STORAGE_KEYS.SELECTED_ROLE, metadataRole);
-      }
+      // Sync localStorage with metadata
+      localStorage.setItem(STORAGE_KEYS.SELECTED_ROLE, metadataRole);
       return metadataRole;
     }
     
-    return localStorageRole;
+    return null;
   };
   
   /**

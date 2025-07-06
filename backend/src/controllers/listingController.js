@@ -279,7 +279,7 @@ export const updateListing = async (req, res) => {
     if (updateData.price) updateData.price = parseFloat(updateData.price);
 
     const listing = await prisma.listings.update({
-      where: { id: BigInt(id) },
+      where: { id: id },
       data: updateData,
       include: {
         landlord_profiles: {
@@ -319,7 +319,7 @@ export const deleteListing = async (req, res) => {
     const { id } = req.params;
 
     await prisma.listings.delete({
-      where: { id: BigInt(id) },
+      where: { id: id },
     });
 
     res.json(successResponse(null, "Listing deleted successfully"));

@@ -39,7 +39,7 @@ export const getUserChats = async (req, res) => {
 
         // Fetch listing details
         let listing = null;
-        if (chat.property_id) {
+        if (chat.property_id && !isNaN(chat.property_id)) {
           try {
             listing = await prisma.listings.findUnique({
               where: { id: BigInt(chat.property_id) },
@@ -114,7 +114,7 @@ export const getChatById = async (req, res) => {
 
     // Fetch listing details
     let listing = null;
-    if (chat.property_id) {
+    if (chat.property_id && !isNaN(chat.property_id)) {
       try {
         listing = await prisma.listings.findUnique({
           where: { id: BigInt(chat.property_id) },
@@ -174,22 +174,19 @@ export const createChat = async (req, res) => {
       return res.json(successResponse(existingChat, "Chat already exists"));
     }
 
-    // Fetch current names from related tables for new chats
-    console.log('Creating chat with:', { tenant_id, landlord_id, property_id });
+    // Fetch names from related tables and property info
     const tenantProfile = await prisma.tenant_profiles.findUnique({
       where: { id: tenant_id },
       select: { full_name: true }
     });
-    console.log('Tenant profile lookup result:', tenantProfile);
 
     const landlordProfile = await prisma.landlord_profiles.findUnique({
       where: { id: landlord_id },
       select: { full_name: true }
     });
-    console.log('Landlord profile lookup result:', landlordProfile);
 
     let listing = null;
-    if (property_id) {
+    if (property_id && !isNaN(property_id)) {
       try {
         listing = await prisma.listings.findUnique({
           where: { id: BigInt(property_id) },
@@ -277,10 +274,11 @@ export const sendMessage = async (req, res) => {
 export const getChatMessages = async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
+    const { page = '1', limit = '50' } = req.query;
 
-    const skip = (page - 1) * limit;
+    const pageNum = parseInt(page);
     const take = parseInt(limit);
+    const skip = (pageNum - 1) * take;
 
     const messages = await prisma.messages.findMany({
       where: { chat_id: chatId },
@@ -349,4 +347,4 @@ export const deleteMessage = async (req, res) => {
     }
     res.status(500).json(errorResponse(error));
   }
-}; 
+};

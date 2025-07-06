@@ -14,6 +14,8 @@ import LandlordDashboard from "./pages/LandlordDashboard";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
+import ManageListing from "./pages/ManageListing";
+import Payments from "./pages/Payments";
 import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
 import { SocketProvider } from "./context/SocketContext";
@@ -21,10 +23,17 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
+
 import { queryClient } from "./lib/queryClient";
 import FinancialAccount from "./pages/FinancialAccount";
 import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
+
+// Removed duplicate import of Payments (PaymentHistory)
+// import Payments from "./pages/PaymentHistory";
+
+// Removed duplicate declaration of queryClient
+// const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -82,29 +91,27 @@ const App = () => (
               <Route 
                 path="/tenant/*" 
                 element={
-                  <RoleProtectedRoute requiredRole="tenant">
-                    <Routes>
-                      <Route path="/" element={<TenantDashboard />} />
-                      <Route path="profile" element={<TenantProfile />} />
-                      <Route path="matches" element={<TenantMatches />} />
-                      <Route path="my-house" element={<TenantMyHouse />} />
-                      <Route path="financial-account" element={<FinancialAccount />} />
-                    </Routes>
-                  </RoleProtectedRoute>
-                } 
-              />
+                  <RoleProtectedRoute requiredRole="tenant" />
+                }
+              >
+                <Route path="/" element={<TenantDashboard />} />
+                <Route path="profile" element={<TenantProfile />} />
+                <Route path="matches" element={<TenantMatches />} />
+                <Route path="my-house" element={<TenantMyHouse />} />
+                <Route path="financial-account" element={<FinancialAccount />} />
+                <Route path="payments" element={<Payments />} />
+              </Route>
+
               <Route 
                 path="/landlord/*" 
                 element={
-                  <RoleProtectedRoute requiredRole="landlord">
-                    <Routes>
-                      <Route path="/" element={<LandlordDashboard />} />
-                      <Route path="profile" element={<LandlordProfile />} />
-                      <Route path="chats" element={<LandlordChats />} />
-                    </Routes>
-                  </RoleProtectedRoute>
-                } 
-              />
+                  <RoleProtectedRoute requiredRole="landlord" />
+                }
+              >
+                <Route path="/" element={<LandlordDashboard />} />
+                <Route path="profile" element={<LandlordProfile />} />
+                <Route path="chats" element={<LandlordChats />} />
+              </Route>
               
               {/* General protected routes - require auth */}
               <Route 
@@ -120,6 +127,22 @@ const App = () => (
                 element={
                   <RoleProtectedRoute requiredRole="landlord">
                     <CreateListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/manage-listing/:id" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <ManageListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/payments" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <Payments />
                   </RoleProtectedRoute>
                 } 
               />
