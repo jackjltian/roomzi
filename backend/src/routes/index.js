@@ -26,6 +26,6 @@ router.use("/chats", chatRoutes);
 export const landlordRouter = express.Router();
 
 landlordRouter.post('/create-listing', createListing);
-landlordRouter.get('/get-listings', getListings);
+landlordRouter.get('/get-listings/:id', getListings);
 
 export default router;

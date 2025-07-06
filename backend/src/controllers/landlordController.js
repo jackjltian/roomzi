@@ -248,16 +248,22 @@ export const createListing = async (req, res) => {
 };
 
 export const getListings = async (req, res) => {
-  try {
-    const { data, error } = await supabase.from("listings").select("*");
 
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        error: "An error occurred while getting the listings.",
-      });
-    }
+    try {
+        const { id } = req.params;
 
+        const { data, error } = await supabase
+            .from('listings')
+            .select('*')
+            .eq('landlord_id', id);
+        
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ 
+                error: 'An error occurred while getting the listings.'
+            });
+        }
+      
     res.status(200).json(data);
   } catch (err) {
     console.error(err);
@@ -266,3 +272,33 @@ export const getListings = async (req, res) => {
     });
   }
 };
+
+
+export const getPayments = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { data, error } = await supabase
+            .from('payment_requests')
+            .select('*')
+            .eq('listingId', id);
+        
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ 
+                error: 'An error occurred while getting the payments.'
+            });
+        }
+
+        if (!data || data.length === 0) {
+          return res.status(200).json([]);
+        }
+  
+        res.status(200).json(data);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            error: 'An error occurred while getting the payments.'
+        });
+    }
+}

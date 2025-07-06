@@ -6,6 +6,7 @@ import {
   updateLandlord,
   deleteLandlord,
   getLandlordListings,
+  getPayments,
 } from "../controllers/landlordController.js";
 
 const router = express.Router();
@@ -27,5 +28,8 @@ router.delete("/:id", deleteLandlord);
 
 // GET /api/landlords/:id/listings - Get landlord's listings
 router.get("/:id/listings", getLandlordListings);
+
+// GET /api/landlords/:id/payments - Get listing payments
+router.get("/payments/:id", getPayments);
 
 export default router;

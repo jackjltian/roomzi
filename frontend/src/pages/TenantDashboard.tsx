@@ -101,7 +101,14 @@ const TenantDashboard = () => {
           landlordId: listing.landlordId,
           landlordName: listing.landlordName,
           landlordPhone: listing.landlordPhone,
-          coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
+          // coordinates: typeof listing.coordinates === 'string' ? JSON.parse(listing.coordinates) : listing.coordinates || { lat: 0, lng: 0 },
+          coordinates:
+            typeof listing.coordinates === 'string'
+              ? (() => {
+                  const parts = listing.coordinates.split(',');
+                  return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]) };
+                })()
+              : listing.coordinates || { lat: 0, lng: 0 },
           available: listing.available,
           leaseType: listing.leaseType,
           requirements: parseMaybeJson(listing.requirements, []),
