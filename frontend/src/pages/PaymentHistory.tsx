@@ -214,7 +214,7 @@ const Payments = () => {
           </form>
         )}
         <div className="space-y-4">
-          {payments.map(payment => (
+          {payments.map(payment => payment.listingId === listingId && (
             <Card key={payment.id} className="p-4 flex flex-col md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-4">
                 <DollarSign className="w-6 h-6 text-blue-500" />

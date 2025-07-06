@@ -1,16 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Home, Image, MapPin, User, Calendar, Settings, MessageCircle, ChartArea, BarChart } from 'lucide-react';
-import Map from '@/components/Map';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { ChatWindow } from '@/components/chat/ChatWindow';
-import { useAuth } from '@/context/AuthContext';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
 import { Bar } from 'react-chartjs-2';
 import {
@@ -21,6 +13,7 @@ import {
     Tooltip,
     Legend,
 } from 'chart.js';
+import LandlordPayments from './LandlordPayments';
 
 ChartJS.register(
     CategoryScale,
@@ -65,12 +58,10 @@ function parseArrayField(field) {
 const ManageListing = () => {
     const { id } = useParams();
     const navigate = useNavigate();
-    const [currentImageIndex, setCurrentImageIndex] = useState(0);
-    const [mapboxToken, setMapboxToken] = useState<string>('');
-    const [isChatOpen, setIsChatOpen] = useState(false);
     const [property, setProperty] = useState(null);
     const [loading, setLoading] = useState(true);
     const [payments, setPayments] = useState([]);
+    const [refreshKey, setRefreshKey] = useState(0);
     
     useEffect(() => {
         const fetchProperty = async () => {
@@ -117,11 +108,12 @@ const ManageListing = () => {
                     credentials: 'include',
                 });
                 const data = await response.json();
+                console.log('Payment data structure:', data);
                 if (response.ok) {
-                    // Fetch tenant names for each payment
+                    // Fetch tenant names for each payment with better error handling
                     const paymentsWithTenant = await Promise.all(
                         data.map(async (payment) => {
-                            let tenantName = 'Unknown Tenant';
+                            let tenantName = `Tenant ${payment.tenantId ? payment.tenantId.slice(0, 8) : 'Unknown'}`;
                             
                             if (payment.tenantId) {
                                 try {
@@ -132,14 +124,23 @@ const ManageListing = () => {
                                         },
                                         credentials: 'include',
                                     });
+                                    
                                     if (tenantResponse.ok) {
                                         const tenantData = await tenantResponse.json();
-                                        if (tenantData.success && tenantData.data) {
+                                        console.log('Tenant response:', tenantData);
+                                        
+                                        if (tenantData.success && tenantData.data && tenantData.data.full_name) {
+                                            tenantName = tenantData.data.full_name;
+                                        } else if (tenantData.data && tenantData.data.full_name) {
                                             tenantName = tenantData.data.full_name;
                                         }
+                                    } else {
+                                        console.warn(`Failed to fetch tenant ${payment.tenantId}: ${tenantResponse.status}`);
+                                        // Keep the default tenant name
                                     }
                                 } catch (error) {
-                                    console.error('Error fetching tenant name:', error);
+                                    console.warn('Error fetching tenant name:', error);
+                                    // Keep the default tenant name
                                 }
                             }
                             
@@ -150,6 +151,7 @@ const ManageListing = () => {
                         })
                     );
                     
+                    // Show all payments regardless of status
                     setPayments(paymentsWithTenant);
                 } else if (response.status === 404) {
                     console.log(`No payments found for listing ${property.id}`)
@@ -162,27 +164,24 @@ const ManageListing = () => {
             }
         };
         fetchPayments();
-    }, [property]);
+    }, [property, refreshKey]);
 
     if (loading) return <div>Loading...</div>;
     if (!property) return <div>Property not found</div>;
-
-    const images = parseImages(property.images);
-    const requirements = parseArrayField(property.requirements);
-    const amenities = parseArrayField(property.amenities);
-    const houseRules = parseArrayField(property.houseRules);
 
     // Process payment data for the chart
     const monthlyData = {};
     payments.forEach(payment => {
         try {
-            const date = new Date(payment.date);
-            const monthYear = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-            if (!monthlyData[monthYear]) {
-                monthlyData[monthYear] = 0;
+            if (payment.status == 'Approved') {
+                const date = new Date(payment.date);
+                const monthYear = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                if (!monthlyData[monthYear]) {
+                    monthlyData[monthYear] = 0;
+                }
+                const amount = parseFloat(payment.amount) || 0;
+                monthlyData[monthYear] += amount;
             }
-            const amount = parseFloat(payment.amount) || 0;
-            monthlyData[monthYear] += amount;
         } catch (error) {
             console.error('Error processing payment for chart:', error);
         }
@@ -202,7 +201,7 @@ const ManageListing = () => {
         labels: sortedLabels.length > 0 ? sortedLabels : ['No Data'],
         datasets: [
             {
-                label: 'Monthly Payments',
+                label: 'Approved Payments',
                 data: sortedData.length > 0 ? sortedData : [0],
                 backgroundColor: 'rgba(59, 130, 246, 0.6)',
                 borderColor: 'rgba(59, 130, 246, 1)',
@@ -257,128 +256,26 @@ const ManageListing = () => {
             <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 pb-20">
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-
-
-                    {/* Enhanced Image Gallery */}
-                    <div className="mb-8">
-                        <div className="aspect-[16/10] rounded-xl overflow-hidden mb-4 shadow-lg">
-                            <img
-                                src={images[currentImageIndex]}
-                                alt={property.title}
-                                className="w-full h-full object-cover"
-                            />
-                        </div>
-                        <div className="flex gap-3 overflow-x-auto pb-2">
-                            {images.map((image, index) => (
-                                <button
-                                    key={index}
-                                    onClick={() => setCurrentImageIndex(index)}
-                                    className={`flex-shrink-0 w-24 h-16 rounded-lg overflow-hidden border-2 transition-all ${
-                                    currentImageIndex === index 
-                                        ? 'border-blue-500 shadow-md scale-105' 
-                                        : 'border-gray-200 hover:border-blue-300'
-                                    }`}
-                                >
-                                    <img
-                                        src={image}
-                                        alt={`${property.title} ${index + 1}`}
-                                        className="w-full h-full object-cover"
-                                    />
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
                     {/* Property Info Grid */}
-                    <div className="grid lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-2 space-y-6">
-                            
-                            {/* Basic Info */}
-                            <div>
-                                <div className="flex justify-between items-start mb-4">
-                                    <h1 className="text-3xl font-bold text-gray-900">{property.title}</h1>
-                                    <Badge variant="secondary" className="text-lg px-4 py-2 capitalize bg-blue-100 text-blue-700">
-                                        {property.type}
-                                    </Badge>
-                                </div>
-                                
-                                <div className="flex items-center text-gray-600 mb-4">
-                                    <MapPin className="w-5 h-5 mr-2 text-blue-500" />
-                                    <span className="text-lg">{property.address}, {property.city}, {property.state} {property.zipCode}</span>
-                                </div>
-
-                                <div className="flex items-center text-gray-600 mb-6">
-                                    <Home className="w-5 h-5 mr-2 text-blue-500" />
-                                    <span className="text-lg">
-                                        {property.bedrooms} bedroom{property.bedrooms !== 1 ? 's' : ''} • 
-                                        {property.bathrooms} bathroom{property.bathrooms !== 1 ? 's' : ''} • 
-                                        {property.area} sq ft
-                                    </span>
-                                </div>
-
-                                <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-8">
-                                    ${property.price.toLocaleString()}
-                                    <span className="text-xl font-normal text-gray-500">/month</span>
-                                </div>
-                            </div>
-
-                            {/* Description */}
-                            <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                                <h2 className="text-xl font-semibold mb-4 text-gray-900">Description</h2>
-                                <p className="text-gray-700 leading-relaxed text-lg">{property.description}</p>
-                            </Card>
-
-                            {/* Amenities */}
-                            <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                                <h2 className="text-xl font-semibold mb-4 text-gray-900">Amenities</h2>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                    {amenities.map((amenity, index) => (
-                                    <div key={index} className="flex items-center p-2 bg-blue-50 rounded-lg">
-                                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                                        <span className="text-gray-700 font-medium">{amenity}</span>
-                                    </div>
-                                    ))}
-                                </div>
-                            </Card>
-
-                            {/* Requirements */}
-                            <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                                <h2 className="text-xl font-semibold mb-4 text-gray-900">Tenant Requirements</h2>
-                                <div className="space-y-3">
-                                    {requirements.map((requirement, index) => (
-                                    <div key={index} className="flex items-center p-2 bg-yellow-50 rounded-lg">
-                                        <div className="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
-                                        <span className="text-gray-700">{requirement}</span>
-                                    </div>
-                                    ))}
-                                </div>
-                            </Card>
-
-                            {/* House Rules */}
-                            <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                                <h2 className="text-xl font-semibold mb-4 text-gray-900">House Rules</h2>
-                                <div className="space-y-3">
-                                    {houseRules.map((rule, index) => (
-                                    <div key={index} className="flex items-center p-2 bg-red-50 rounded-lg">
-                                        <div className="w-2 h-2 bg-red-500 rounded-full mr-3"></div>
-                                        <span className="text-gray-700">{rule}</span>
-                                    </div>
-                                    ))}
-                                </div>
-                            </Card>
-
+                    <div className="grid lg:grid-cols-3 gap-8 mb-8">
+                        <div className="lg:col-span-3 space-y-6">
                             {/* Actions */}
                             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
                                 <h2 className="text-xl font-semibold mb-4 text-gray-900">Actions</h2>
-                                <div className="space-y-3">
-                                    <Button className="w-full">
-                                        Edit Status
+                                <div className="space-x-3">
+                                    <Button className="w-fit">
+                                        View Tenant Details
                                     </Button>
-                                    <Button className="w-full">
+                                    <Button className="w-fit">
                                         View Lease Agreement
                                     </Button>
                                 </div>
                             </Card>
+
+                            <LandlordPayments 
+                                listingId={property?.id} 
+                                onPaymentStatusChange={() => setRefreshKey(prev => prev + 1)}
+                            />
 
                             {/* Monthly Income */}
                             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
@@ -408,8 +305,36 @@ const ManageListing = () => {
                                                     </div>
                                                     <div className="text-right">
                                                         <p className="text-sm text-gray-600">{payment.tenantName || 'Unknown Tenant'}</p>
-                                                        <p className="text-sm text-gray-600">Status: {payment.status}</p>
+                                                        <div className="flex items-center justify-end mt-1">
+                                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                                                payment.status === 'Approved' 
+                                                                    ? 'bg-green-100 text-green-800' 
+                                                                    : payment.status === 'Pending'
+                                                                    ? 'bg-yellow-100 text-yellow-800'
+                                                                    : 'bg-red-100 text-red-800'
+                                                            }`}>
+                                                                {payment.status}
+                                                            </span>
+                                                        </div>
                                                     </div>
+                                                </div>
+                                                <div className="flex justify-end mt-2">
+                                                    {payment.proofUrl ? (
+                                                        <a 
+                                                            href={`http://localhost:3001${payment.proofUrl}`} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer" 
+                                                            className="flex items-center text-blue-600 hover:underline text-sm"
+                                                        >
+                                                            <FileText className="w-4 h-4 mr-1" />
+                                                            View Proof
+                                                        </a>
+                                                    ) : (
+                                                        <span className="flex items-center text-gray-400 text-sm">
+                                                            <FileText className="w-4 h-4 mr-1" />
+                                                            No Proof
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))
@@ -421,83 +346,9 @@ const ManageListing = () => {
                                 </div>
                             </Card>
                         </div>
-
-                        {/* Enhanced Sidebar */}
-                        <div className="lg:col-span-1 space-y-6">
-                            {/* Contact Card */}
-                            <Card className="p-6 sticky top-24 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                            <h3 className="text-lg font-semibold mb-4">Contact Tenants</h3>
-                            <div className="flex items-center mb-6">
-                                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mr-3">
-                                    <User className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <p className="font-medium text-gray-900">{property.landlordName}</p>
-                                    <p className="text-sm text-gray-600">{property.landlordPhone}</p>
-                                </div>
-                            </div>
-                            
-                            <div className="space-y-3">
-                                <Button 
-                                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-md"
-                                    onClick={() => setIsChatOpen(true)}
-                                >
-                                    Send Message
-                                </Button>
-                                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
-                                <Calendar className="w-4 h-4 mr-2" />
-                                    Schedule Viewing
-                                </Button>
-                                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
-                                    Call Now
-                                </Button>
-                            </div>
-                            </Card>
-
-                            {/* Chat Dialog */}
-                            <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
-                                <DialogContent className="max-w-2xl h-[80vh] p-0">
-                                    <ChatWindow 
-                                        propertyTitle={property.title}
-                                        propertyImage={images[0]}
-                                        landlordName={property.landlordName}
-                                        landlordId={property.landlordId}
-                                        chatRoomId={undefined}
-                                        propertyId={property.id}
-                                    />
-                                </DialogContent>
-                            </Dialog>
-
-                            {/* Enhanced Map */}
-                            <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                                <h3 className="text-lg font-semibold mb-4">Location</h3>
-                                <div className="aspect-square rounded-lg overflow-hidden">
-                                    {mapboxToken ? (
-                                    <Map 
-                                        properties={[property]} 
-                                        onPropertyClick={() => {}}
-                                        mapboxToken={mapboxToken}
-                                    />
-                                    ) : (
-                                    <div className="h-full bg-gray-100 rounded-lg flex flex-col items-center justify-center p-4">
-                                        <MapPin className="w-8 h-8 text-gray-400 mb-2" />
-                                        <p className="text-center text-gray-500 text-sm mb-3">Enter Mapbox token to view map</p>
-                                        <input
-                                            type="text"
-                                            placeholder="Mapbox token..."
-                                            value={mapboxToken}
-                                            onChange={(e) => setMapboxToken(e.target.value)}
-                                            className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                        />
-                                    </div>
-                                    )}
-                                </div>
-                            </Card>
-                        </div>
                     </div>
                 </div>
             </div>
-
         </div>
     );
 };

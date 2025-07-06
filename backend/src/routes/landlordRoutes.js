@@ -15,6 +15,9 @@ const router = express.Router();
 // GET /api/landlords - Get all landlords
 router.get("/", getLandlords);
 
+// GET /api/landlords/payments/:id - Get listing payments
+router.get("/payments/:id", getPayments);
+
 // GET /api/landlords/:id - Get landlord by ID
 router.get("/:id", autoCreateLandlordProfile, getLandlordById);
 
@@ -29,8 +32,5 @@ router.delete("/:id", autoCreateLandlordProfile, deleteLandlord);
 
 // GET /api/landlords/:id/listings - Get landlord's listings
 router.get("/:id/listings", autoCreateLandlordProfile, getLandlordListings);
-
-// GET /api/landlords/:id/payments - Get listing payments
-router.get("/payments/:id", getPayments);
 
 export default router;

@@ -23,7 +23,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
 import { LandlordChats } from "./components/chat/LandlordChats";
-import Payments from "./pages/PaymentHistory";
+import PaymentHistory from "./pages/PaymentHistory";
 import LandlordPayments from './pages/LandlordPayments';
 
 import { queryClient } from "./lib/queryClient";
@@ -99,7 +99,7 @@ const App = () => (
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
                       <Route path="my-house" element={<TenantMyHouse />} />
-                      <Route path="payments/:listingId" element={<Payments />} />
+                      <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
                     </Routes>
                   </RoleProtectedRoute>
