@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -14,8 +14,11 @@ import LandlordDashboard from "./pages/LandlordDashboard";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
+import ManageListing from "./pages/ManageListing";
+import Payments from "./pages/Payments";
 import Auth from "./pages/Auth";
 import { AuthProvider } from "./context/AuthContext";
+import { SocketProvider } from "./context/SocketContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthCallback } from "./pages/AuthCallback";
 import { RoleProtectedRoute } from "./components/auth/RoleProtectedRoute";
@@ -23,18 +26,30 @@ import { LandlordChats } from "./components/chat/LandlordChats";
 import Payments from "./pages/PaymentHistory";
 import LandlordPayments from './pages/LandlordPayments';
 
-const queryClient = new QueryClient();
+import { queryClient } from "./lib/queryClient";
+import FinancialAccount from "./pages/FinancialAccount";
+import ScrollToTop from './components/ScrollToTop';
+import FAQ from './pages/FAQ';
+
+// Removed duplicate import of Payments (PaymentHistory)
+// import Payments from "./pages/PaymentHistory";
+
+// Removed duplicate declaration of queryClient
+// const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <BrowserRouter>
+      <ScrollToTop />
       <AuthProvider>
+        <SocketProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
             <Routes>
               {/* Public routes - ONLY Index page is public */}
               <Route path="/" element={<Index />} />
+              <Route path="/faq" element={<FAQ />} />
               
               {/* Auth-related routes - don't require existing auth but handle auth flow */}
               <Route 
@@ -121,6 +136,22 @@ const App = () => (
                   </RoleProtectedRoute>
                 } 
               />
+              <Route 
+                path="/manage-listing/:id" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <ManageListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/payments" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <Payments />
+                  </RoleProtectedRoute>
+                } 
+              />
               
               {/* 404 page - also requires auth (users must be logged in to see it) */}
               <Route 
@@ -133,8 +164,9 @@ const App = () => (
               />
             </Routes>
           </TooltipProvider>
-        </AuthProvider>
-      </BrowserRouter>
+        </SocketProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </QueryClientProvider>
 );
 

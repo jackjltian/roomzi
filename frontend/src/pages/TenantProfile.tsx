@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,10 @@ import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2,
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { landlordApi, tenantApi, ApiError } from '@/utils/api';
+
+import { landlordApi, ApiError, apiFetch, getApiBaseUrl, tenantApi } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
+import { supabase } from '@/lib/supabaseClient';
 
 interface TenantProfileData {
   id: string;
@@ -30,8 +32,18 @@ const TenantProfile = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('info');
   const [switching, setSwitching] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  const [name, setName] = useState(user?.user_metadata?.fullName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.user_metadata?.phone || '');
+  const [location, setLocation] = useState(user?.user_metadata?.location || '');
   const [saving, setSaving] = useState(false);
+  // Removed duplicate saving here
+
+  const [profilePhoto, setProfilePhoto] = useState(user?.user_metadata?.profilePhoto || '');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<TenantProfileData | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({
@@ -41,7 +53,6 @@ const TenantProfile = () => {
     address: '',
   });
 
-  // Fetch tenant profile data
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return;
@@ -49,7 +60,7 @@ const TenantProfile = () => {
       try {
         setLoading(true);
         const result = await tenantApi.getById(user.id);
-        
+
         if (result.success && result.data) {
           setProfileData(result.data.data);
           setFormData({
@@ -59,7 +70,7 @@ const TenantProfile = () => {
             address: result.data.data.address || '',
           });
         } else {
-          // Profile doesn't exist, create a basic one
+          // Create profile if not found
           const createResult = await tenantApi.create(user.id, user.email || '');
           if (createResult.success && createResult.data) {
             setProfileData(createResult.data.data);
@@ -69,11 +80,10 @@ const TenantProfile = () => {
               phone: '',
               address: '',
             });
-            setEditMode(true); // Automatically enter edit mode for new profiles
+            setEditMode(true);
           }
         }
       } catch (error) {
-        console.error('Error fetching profile:', error);
         toast({
           title: "Error",
           description: "Failed to load profile data.",
@@ -87,33 +97,6 @@ const TenantProfile = () => {
     fetchProfile();
   }, [user, toast]);
 
-  // Refresh profile data when component is focused (to show synced data from landlord profile)
-  useEffect(() => {
-    const handleFocus = () => {
-      if (user?.id && !loading && !saving && !switching) {
-        // Silently refresh the profile data
-        tenantApi.getById(user.id).then(result => {
-          if (result.success && result.data) {
-            setProfileData(result.data.data);
-            if (!editMode) {
-              setFormData({
-                full_name: result.data.data.full_name || '',
-                email: result.data.data.email || '',
-                phone: result.data.data.phone || '',
-                address: result.data.data.address || '',
-              });
-            }
-          }
-        }).catch(error => {
-          console.log('Background refresh failed:', error);
-        });
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [user, loading, saving, switching, editMode]);
-
   const handleSwitchToLandlord = async () => {
     if (!user) {
       toast({
@@ -125,13 +108,10 @@ const TenantProfile = () => {
     }
 
     setSwitching(true);
-    
+
     try {
-      console.log('Switching to landlord role...');
-      
-      // Step 1: Create landlord profile if needed using centralized API
       const profileResult = await landlordApi.create(user.id, user.email || '');
-      
+
       if (profileResult.success) {
         if (profileResult.alreadyExists) {
           console.log('✅ Landlord profile already exists - user can proceed');
@@ -139,29 +119,21 @@ const TenantProfile = () => {
           console.log('✅ New landlord profile created successfully');
         }
       }
-      
-      // Step 2: Update Supabase metadata
+
       await updateUserMetadata('landlord');
-      
-      // Step 3: Update local role
       setUserRole('landlord');
-      
-      // Step 4: Show success and navigate
+
       toast({
         title: "Role Switched",
         description: "Welcome to your landlord dashboard!",
         variant: "default",
       });
-      
-      // Navigate and force refresh to show latest synced data
+
       navigate('/landlord');
       window.location.reload();
-      
     } catch (error) {
-      console.error('Error switching to landlord:', error);
-      
       let errorMessage = "Unable to switch to landlord role. Please try again.";
-      
+
       if (error instanceof ApiError) {
         if (error.status === 0) {
           errorMessage = "Unable to connect to server. Please check your internet connection.";
@@ -171,7 +143,7 @@ const TenantProfile = () => {
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: "Switch Failed",
         description: errorMessage,
@@ -189,17 +161,18 @@ const TenantProfile = () => {
     }));
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveChanges = async () => {
     if (!user?.id) return;
 
     setSaving(true);
-    
+
     try {
       const updateResult = await tenantApi.update(user.id, {
         full_name: formData.full_name,
         email: formData.email,
         phone: formData.phone || null,
         address: formData.address || null,
+        image_url: profilePhoto,
       });
 
       if (updateResult.success) {
@@ -209,26 +182,89 @@ const TenantProfile = () => {
           phone: formData.phone || null,
           address: formData.address || null,
         } : null);
-        
+
         setEditMode(false);
-        
+
+        window.dispatchEvent(new CustomEvent('tenantProfileUpdated', {
+          detail: {
+            fullName: formData.full_name,
+            email: formData.email,
+            phone: formData.phone || null,
+            address: formData.address || null,
+            profilePhoto,
+          }
+        }));
+
+        navigate('/tenant', { state: { profileUpdated: true } });
+
         toast({
           title: "Success",
           description: "Profile updated successfully!",
           variant: "default",
         });
+      } else {
+        throw new Error(updateResult.message || 'Failed to update profile');
       }
     } catch (error) {
-      console.error('Error saving profile:', error);
       toast({
-        title: "Save Failed",
-        description: "Failed to save profile changes. Please try again.",
-        variant: "destructive",
+        title: 'Update Failed',
+        description: (error as Error)?.message || 'Failed to save profile changes. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setSaving(false);
     }
   };
+
+  const handleCameraButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingPhoto(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `profile-photos/${fileName}`;
+      // Show preview immediately
+      const localPreview = URL.createObjectURL(file);
+      setProfilePhoto(localPreview);
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('profile-photos')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      // Get public URL
+      const { data } = supabase.storage.from('profile-photos').getPublicUrl(filePath);
+      if (!data?.publicUrl) throw new Error('Failed to get public URL');
+      setProfilePhoto(data.publicUrl);
+      // Update user metadata/profile with new photo URL
+      const response = await apiFetch(`/api/tenant/update-profile`, {
+        method: 'POST',
+        body: JSON.stringify({
+          id: user.id,
+          profilePhoto: data.publicUrl,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.success) throw new Error(response.message || 'Failed to update profile photo');
+      toast({
+        title: 'Profile Photo Updated',
+        description: 'Your new photo has been saved.',
+        variant: 'default',
+      });
+    } catch (error) {
+      toast({
+        title: 'Photo Upload Failed',
+        description: (error as Error)?.message || 'Could not upload photo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }; // <-- added missing closing brace here
 
   const handleCancelEdit = () => {
     if (profileData) {
@@ -287,21 +323,29 @@ const TenantProfile = () => {
         <Card className="p-6 mb-6">
           <div className="flex items-center space-x-6">
             <div className="relative">
-              <Avatar className="w-24 h-24">
-                <AvatarImage 
-                  src={profileData?.image_url || undefined} 
-                  alt={profileData?.full_name || 'Profile'}
-                />
-                <AvatarFallback className="bg-gray-200 text-gray-500 text-xl">
-                  {profileData?.full_name ? profileData.full_name.split(' ').map(n => n[0]).join('').toUpperCase() : <User className="w-12 h-12" />}
-                </AvatarFallback>
-              </Avatar>
+              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
+                {profilePhoto ? (
+                  <img src={profilePhoto} alt="Profile" className="w-24 h-24 object-cover" />
+                ) : (
+                  <User className="w-12 h-12 text-gray-500" />
+                )}
+              </div>
               <Button
                 size="sm"
                 className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0"
+                onClick={handleCameraButtonClick}
+                disabled={uploadingPhoto}
+                aria-label="Change profile photo"
               >
-                <Camera className="w-4 h-4" />
+                {uploadingPhoto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleProfilePhotoChange}
+              />
             </div>
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-gray-900">
@@ -344,7 +388,7 @@ const TenantProfile = () => {
           </div>
         </Card>
 
-        {/* Tab Navigation */}
+        {/* Tabs */}
         <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg">
           {tabs.map((tab) => (
             <button
@@ -379,7 +423,7 @@ const TenantProfile = () => {
                     Cancel
                   </Button>
                   <Button
-                    onClick={handleSaveProfile}
+                    onClick={handleSaveChanges}
                     size="sm"
                     className="flex items-center roomzi-gradient"
                     disabled={saving}
@@ -423,7 +467,6 @@ const TenantProfile = () => {
                   value={formData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   disabled={!editMode}
-                  placeholder="Enter phone number"
                 />
               </div>
               <div>
@@ -434,83 +477,12 @@ const TenantProfile = () => {
                   value={formData.address}
                   onChange={(e) => handleInputChange('address', e.target.value)}
                   disabled={!editMode}
-                  placeholder="Enter your location"
                 />
               </div>
             </div>
-            {!editMode && (
-              <Button 
-                className="mt-4 roomzi-gradient"
-                onClick={() => setEditMode(true)}
-              >
-                Edit Profile
-              </Button>
-            )}
           </Card>
         )}
-
-        {activeTab === 'docs' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Verification Documents</h3>
-            <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Identity Proof</p>
-                <Button variant="outline">Choose File</Button>
-              </div>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Employment Letter / Enrollment Letter</p>
-                <Button variant="outline">Choose File</Button>
-              </div>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 mb-2">Upload Rental History</p>
-                <Button variant="outline">Choose File</Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {activeTab === 'credit' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Credit Score</h3>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600 mb-2">Upload Credit Score Report</p>
-              <Button variant="outline">Choose File</Button>
-            </div>
-          </Card>
-        )}
-
-        {activeTab === 'settings' && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Settings</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Email Notifications</h4>
-                  <p className="text-sm text-gray-600">Receive updates about matches and messages</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Privacy Settings</h4>
-                  <p className="text-sm text-gray-600">Control who can see your profile</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Account Settings</h4>
-                  <p className="text-sm text-gray-600">Change password and security settings</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-            </div>
-          </Card>
-        )}
+        {/* TODO: add content for other tabs */}
       </div>
     </div>
   );

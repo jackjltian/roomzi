@@ -5,12 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
 import { Property } from '@/data/sampleProperties';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
 import { getApiBaseUrl } from '@/utils/api';
+import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
 
 // Helper to safely parse JSON fields
 const parseMaybeJson = (value, fallback = []) => {
@@ -39,6 +40,14 @@ const TenantDashboard = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { toast } = useToast();
+  const [profile, setProfile] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    location: '',
+    profilePhoto: '',
+  });
+  const location = useLocation();
 
   // Debug: Log current user info
   useEffect(() => {
@@ -51,6 +60,40 @@ const TenantDashboard = () => {
 
   useEffect(() => {
     fetchProperties();
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [user]);
+
+  useEffect(() => {
+    if (location.state && location.state.profileUpdated) {
+      fetchProfile();
+      // Clear the state so it doesn't refetch on every render
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchProfile();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  useEffect(() => {
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setProfile(e.detail);
+      }
+    };
+    window.addEventListener('tenantProfileUpdated', handleProfileUpdated);
+    return () => window.removeEventListener('tenantProfileUpdated', handleProfileUpdated);
+  }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }, []);
 
   const fetchProperties = async () => {
@@ -114,18 +157,37 @@ const TenantDashboard = () => {
     }
   };
 
+  const fetchProfile = async () => {
+    if (!user) return;
+    try {
+      const response = await apiFetch(`${getApiBaseUrl()}/api/tenants/${user.id}`);
+      if (response.success && response.data) {
+        const data = response.data.data;
+        setProfile({
+          fullName: data.full_name || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          location: data.address || '',
+          profilePhoto: data.image_url || '',
+        });
+      }
+    } catch (err) {
+      // Optionally show a toast or log error
+    }
+  };
+
   const filteredProperties = properties.filter(property => {
     const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.city.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesType = selectedType === 'all' || property.type === selectedType;
-    
+
     let matchesPrice = true;
     if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
     else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
     else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
-    
+
     return matchesSearch && matchesType && matchesPrice;
   });
 
@@ -170,11 +232,36 @@ const TenantDashboard = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24">
+        {/* Tenant Profile Info */}
+        <Card className="p-6 mb-6 flex items-center gap-6">
+          <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+            {profile.profilePhoto ? (
+              <img src={profile.profilePhoto} alt="Profile" className="w-20 h-20 object-cover" />
+            ) : (
+              <User className="w-10 h-10 text-gray-400" />
+            )}
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{profile.fullName || 'Your Name'}</h2>
+            <div className="text-gray-600 text-sm">{profile.email}</div>
+            <div className="text-gray-600 text-sm">{profile.phone}</div>
+            <div className="text-gray-600 text-sm">{profile.location}</div>
+          </div>
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" onClick={() => navigate('/tenant/profile')}>
+              <Settings className="w-4 h-4 mr-2" /> Edit Profile
+            </Button>
+          </div>
+        </Card>
+
         {/* Enhanced Welcome Section */}
         <div className="mb-8 text-center">
           <h2 className="text-4xl font-bold text-gray-900 mb-3">Find Your Perfect Home</h2>
           <p className="text-gray-600 text-lg">Discover amazing properties with our enhanced search and map view</p>
         </div>
+
+        {/* Upcoming Payment Banner */}
+        <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">

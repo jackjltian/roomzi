@@ -30,4 +30,9 @@ router.use("/chats", chatRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/landlord", landlordRouter);
 
+export const landlordRouter = express.Router();
+
+landlordRouter.post('/create-listing', createListing);
+landlordRouter.get('/get-listings/:id', getListings);
+
 export default router;

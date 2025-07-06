@@ -1,10 +1,10 @@
 import { useAuth } from '@/context/AuthContext';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation, Outlet } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { getCurrentUserRole, getRedirectPath } from '@/utils/auth';
 
 interface RoleProtectedRouteProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   requiredRole: 'tenant' | 'landlord';
 }
 
@@ -45,5 +45,5 @@ export const RoleProtectedRoute = ({ children, requiredRole }: RoleProtectedRout
     return <Navigate to={redirectPath} replace />;
   }
 
-  return <>{children}</>;
+  return children ? <>{children}</> : <Outlet />;
 };

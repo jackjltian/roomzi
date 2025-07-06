@@ -12,16 +12,24 @@ const LandlordDashboard = () => {
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
 
+  // Get user's name from metadata or email
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
+  const userId = user?.id || '';
+
   const handleCreateListing = () => {
     navigate('/create-listing');
   };
 
-  const totalIncome = properties.reduce((sum, property) => sum + property.price, 0);
-  const occupiedProperties = properties.filter(p => !p.available).length;
+  const handleManageListing = (listingId) => {
+    navigate(`/manage-listing/${listingId}`);
+  }
 
-  // Get user's name from metadata or email
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
-  const userId = user?.id || '';
+  const handleViewPayments = () => {
+    navigate('/payments');
+  }
+
+  const totalIncome = properties.reduce((sum, property) => property.landlord_id === userId ? sum + property.price : sum, 0);
+  const occupiedProperties = properties.filter(p => p.landlord_id === userId && !p.available).length;
 
   useEffect(() => {
     async function fetchProperties() {
@@ -110,7 +118,7 @@ const LandlordDashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 mb-1">Total Properties</p>
-                <p className="text-3xl font-bold">{properties.length}</p>
+                <p className="text-3xl font-bold">{properties.filter(property => property.landlord_id === userId).length}</p>
               </div>
               <div className="w-12 h-12 bg-blue-400 rounded-lg flex items-center justify-center">
                 <Home className="w-6 h-6 text-white" />
@@ -124,9 +132,9 @@ const LandlordDashboard = () => {
                 <p className="text-green-100 mb-1">Monthly Income</p>
                 <p className="text-3xl font-bold">${totalIncome.toLocaleString()}</p>
               </div>
-              <div className="w-12 h-12 bg-green-400 rounded-lg flex items-center justify-center">
+              <Button className="w-12 h-12 bg-green-400 rounded-lg flex items-center justify-center hover:bg-green-600" onClick={handleViewPayments}>
                 <Calendar className="w-6 h-6 text-white" />
-              </div>
+              </Button>
             </div>
           </Card>
 
@@ -194,12 +202,7 @@ const LandlordDashboard = () => {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => navigate(`/landlord/listing/${property.id}/payments`)}
-                  >
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => handleManageListing(property.id)}>
                     Manage
                   </Button>
                   <Button size="sm" variant="outline" className="flex-1">

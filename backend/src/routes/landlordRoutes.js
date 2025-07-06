@@ -6,6 +6,7 @@ import {
   updateLandlord,
   deleteLandlord,
   getLandlordListings,
+  getPayments,
 } from "../controllers/landlordController.js";
 import { autoCreateLandlordProfile } from "../middleware/autoCreateProfile.js";
 
@@ -28,5 +29,8 @@ router.delete("/:id", autoCreateLandlordProfile, deleteLandlord);
 
 // GET /api/landlords/:id/listings - Get landlord's listings
 router.get("/:id/listings", autoCreateLandlordProfile, getLandlordListings);
+
+// GET /api/landlords/:id/payments - Get listing payments
+router.get("/payments/:id", getPayments);
 
 export default router;

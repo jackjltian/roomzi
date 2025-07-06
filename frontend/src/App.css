@@ -41,3 +41,13 @@
   color: #888;
 }
 
+
+.hide-scrollbar {
+  overflow: visible !important;
+  max-height: none !important;
+  height: auto !important;
+  scrollbar-width: none; /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
