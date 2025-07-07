@@ -1,6 +1,34 @@
 import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
 
+// Helper function to convert BigInt to string for JSON serialization
+const convertBigIntToString = (obj) => {
+  if (obj === null || obj === undefined) return obj;
+  
+  if (typeof obj === 'bigint') {
+    return obj.toString();
+  }
+  
+  // Handle Date objects
+  if (obj instanceof Date) {
+    return obj.toISOString();
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(convertBigIntToString);
+  }
+  
+  if (typeof obj === 'object') {
+    const converted = {};
+    for (const [key, value] of Object.entries(obj)) {
+      converted[key] = convertBigIntToString(value);
+    }
+    return converted;
+  }
+  
+  return obj;
+};
+
 // Get all tenants
 export const getTenants = async (req, res) => {
   try {
@@ -20,7 +48,9 @@ export const getTenants = async (req, res) => {
       orderBy: { created_at: "desc" },
     });
 
-    res.json(successResponse(tenants, "Tenants retrieved successfully"));
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(tenants);
+    res.json(successResponse(responseData, "Tenants retrieved successfully"));
   } catch (error) {
     console.error("Error fetching tenants:", error);
     res.status(500).json(errorResponse(error));
@@ -58,22 +88,35 @@ export const getTenantById = async (req, res) => {
         .json(errorResponse(new Error("Tenant not found"), 404));
     }
 
-    res.json(successResponse(tenant, "Tenant retrieved successfully"));
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(tenant);
+    res.json(successResponse(responseData, "Tenant retrieved successfully"));
   } catch (error) {
     console.error("Error fetching tenant:", error);
     res.status(500).json(errorResponse(error));
   }
 };
 
-// Create new tenant
+// Create new tenant (with upsert functionality)
 export const createTenant = async (req, res) => {
   try {
     const { id, full_name, email, phone, image_url, address } = req.body;
 
-    const tenant = await prisma.tenant_profiles.create({
-      data: {
+    // Use upsert to handle both create and update scenarios
+    const tenant = await prisma.tenant_profiles.upsert({
+      where: { id },
+      update: {
+        // Update existing profile with new data if provided
+        ...(full_name && { full_name }),
+        ...(email && { email }),
+        ...(phone !== undefined && { phone }),
+        ...(image_url !== undefined && { image_url }),
+        ...(address !== undefined && { address }),
+        updated_at: new Date(),
+      },
+      create: {
         id,
-        full_name,
+        full_name: full_name || email.split("@")[0], // Use email prefix as fallback
         email,
         phone,
         image_url,
@@ -81,19 +124,15 @@ export const createTenant = async (req, res) => {
       },
     });
 
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(tenant);
     res
       .status(201)
-      .json(successResponse(tenant, "Tenant created successfully"));
+      .json(
+        successResponse(responseData, "Tenant profile created/updated successfully")
+      );
   } catch (error) {
-    console.error("Error creating tenant:", error);
-
-    // Handle unique constraint violation
-    if (error.code === "P2002") {
-      return res
-        .status(400)
-        .json(errorResponse(new Error("Tenant ID already exists"), 400));
-    }
-    
+    console.error("Error creating/updating tenant:", error);
     res.status(500).json(errorResponse(error));
   }
 };
@@ -116,7 +155,9 @@ export const updateTenant = async (req, res) => {
       },
     });
 
-    res.json(successResponse(tenant, "Tenant updated successfully"));
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(tenant);
+    res.json(successResponse(responseData, "Tenant updated successfully"));
   } catch (error) {
     console.error("Error updating tenant:", error);
 
@@ -149,6 +190,38 @@ export const deleteTenant = async (req, res) => {
         .json(errorResponse(new Error("Tenant not found"), 404));
     }
 
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Get tenant's listings (properties they're renting)
+export const getTenantListings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log("Fetching listings for tenant ID:", id);
+
+    const listings = await prisma.listings.findMany({
+      where: { 
+        tenant_id: id,
+        available: false // Only show occupied properties
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    console.log("Found listings:", listings.length, "for tenant:", id);
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = listings.map(listing => ({
+      ...listing,
+      id: listing.id.toString(),
+    }));
+
+    res.json(
+      successResponse(responseData, "Tenant listings retrieved successfully")
+    );
+  } catch (error) {
+    console.error("Error fetching tenant listings:", error);
     res.status(500).json(errorResponse(error));
   }
 };

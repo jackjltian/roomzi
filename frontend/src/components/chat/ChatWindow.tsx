@@ -27,6 +27,7 @@ import {
 import { EmojiPicker } from './EmojiPicker';
 import { toast } from '@/hooks/use-toast';
 import { chatApi, Message as ApiMessage } from '@/api/chat';
+import { useSocket } from '@/context/SocketContext';
 import {
   Tooltip,
   TooltipContent,
@@ -41,25 +42,29 @@ import {
 } from "../ui/dropdown-menu";
 import { useAuth } from '@/context/AuthContext';
 import { getCurrentUserRole } from '@/utils/auth';
+import { supabase } from '@/lib/supabaseClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface ChatWindowProps {
   propertyTitle?: string;
   propertyImage?: string;
   landlordName?: string;
   landlordImage?: string;
+  tenantName?: string;
   chatRoomId?: string;
   landlordId?: string;
   propertyId?: string;
   isFullPage?: boolean;
+  onClose?: () => void;
 }
 
 interface Message {
   id: string;
   content: string;
-  sender: 'user' | 'landlord' | 'other';
+  sender: 'user' | 'other';
   timestamp: Date;
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'error';
-  type: 'text' | 'image';
+  type: 'text' | 'image' | 'file';
   imageUrl?: string;
   replyTo?: Message;
   reactions: Record<string, string[]>;
@@ -75,18 +80,26 @@ const REACTIONS = [
 
 const MAX_MESSAGE_LENGTH = 1000;
 
+// Helper to check for real UUID
+const isRealUuid = (id: string) => /^[0-9a-fA-F-]{36}$/.test(id);
+
 export function ChatWindow({ 
   propertyTitle,
   propertyImage = "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
   landlordName,
   landlordImage,
+  tenantName,
   chatRoomId: initialChatRoomId,
   landlordId,
   propertyId,
-  isFullPage = false
+  isFullPage = false,
+  onClose
 }: ChatWindowProps) {
+  // Log the current user ID at the very start of rendering
   const { user } = useAuth();
+  console.log('[ChatWindow] Current user ID:', user?.id);
   const userRole = getCurrentUserRole(user);
+  const { socket, isConnected, joinChat, leaveChat, sendMessage, sendTyping, sendStopTyping } = useSocket();
   const [chatRoomId, setChatRoomId] = useState<string | undefined>(initialChatRoomId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -101,52 +114,191 @@ export function ChatWindow({
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { toast } = useToast();
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
   // On mount, try to find an existing chat room and fetch messages
   useEffect(() => {
     const tryFindChatRoom = async () => {
+      // Only create a new chat room if we don't have a chatRoomId AND we have all required IDs
       if (!chatRoomId && user && landlordId && propertyId) {
-        const tenant_id = userRole === 'tenant' ? user.id : undefined;
-        const landlord_id = userRole === 'tenant' ? landlordId : user.id;
+        const isTenant = userRole === 'tenant';
+        const tenant_id = isTenant ? user.id : undefined;
+        const landlord_id = isTenant ? landlordId : user.id;
+        const tenant_name = isTenant
+          ? user.user_metadata?.full_name
+          : undefined;
+        // Log the IDs and names being sent to the backend
+        console.log('[ChatWindow] Creating chat with:', {
+          tenant_id,
+          landlord_id,
+          propertyId,
+          tenantName: tenant_name,
+          propertyTitle,
+          landlordName
+        });
         try {
-          const chatRoom = await chatApi.findOrCreateChatRoom(
+          const chatRoom = await chatApi.createChatRoom(
             tenant_id,
             landlord_id,
-            propertyId
+            propertyId,
+            tenant_name,
+            propertyTitle,
+            landlordName
           );
           if (chatRoom && chatRoom.id) {
             setChatRoomId(chatRoom.id);
             await fetchMessages(chatRoom.id);
           }
         } catch (e) {
-          // Ignore if not found, only create on send
+          console.log('[ChatWindow] Could not create chat room:', e);
+          // Don't create chat room automatically - let user send first message
         }
       }
     };
     tryFindChatRoom();
     // eslint-disable-next-line
-  }, []);
+  }, [chatRoomId, user, landlordId, propertyId, userRole]);
 
-  // Fetch messages when chatRoomId changes
+  // Join/leave chat room when chatRoomId changes
   useEffect(() => {
-    if (chatRoomId) {
+    if (chatRoomId && isConnected) {
+      joinChat(chatRoomId);
       fetchMessages(chatRoomId);
+      
+      return () => {
+        leaveChat(chatRoomId);
+      };
     }
-  }, [chatRoomId]);
+  }, [chatRoomId, isConnected, joinChat, leaveChat]);
+
+  // WebSocket event listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    // Listen for new messages
+    socket.on('new-message', (messageData: any) => {
+      setMessages(prev => {
+        // Remove any optimistic message with same type, sender, and status 'sending'
+        const filtered = prev.filter(
+          m => !(
+            m.status === 'sending' &&
+            m.sender === (messageData.sender_id === user?.id ? 'user' : 'other')
+          )
+        );
+        
+        // If message with this id already exists, do not add
+        if (filtered.some(m => m.id === messageData.id)) return filtered;
+        
+        // Parse content to determine if it's a file/image
+        let fileInfo: { name: string, url: string, type?: string } | null = null;
+        let isImageFile = false;
+        try {
+          const parsed = JSON.parse(messageData.content);
+          if (parsed && typeof parsed === 'object' && parsed.url && parsed.name) {
+            fileInfo = parsed;
+            isImageFile = parsed.type?.startsWith('image/') || false;
+          }
+        } catch {}
+        
+        // Determine message type
+        let messageType: 'text' | 'image' | 'file' = 'text';
+        if (isImageFile) {
+          messageType = 'image';
+        } else if (fileInfo) {
+          messageType = 'file';
+        }
+        
+        // Reconstruct replyTo if reply_to_id is present
+        let replyTo = undefined;
+        if (messageData.reply_to_id) {
+          const referenced = filtered.find(msg => msg.id === messageData.reply_to_id);
+          if (referenced) {
+            replyTo = { id: referenced.id, content: referenced.content };
+          }
+        }
+        
+        const newMessage: Message = {
+          id: messageData.id,
+          content: messageData.content,
+          sender: messageData.sender_id === user?.id ? 'user' : 'other',
+          timestamp: new Date(messageData.created_at),
+          status: 'sent',
+          type: messageType,
+          imageUrl: isImageFile ? fileInfo?.url : undefined,
+          reactions: {},
+          replyTo
+        };
+        
+        return [...filtered, newMessage];
+      });
+    });
+
+    // Listen for typing indicators
+    socket.on('user-typing', (data: any) => {
+      if (data.userId !== user?.id) {
+        setIsTyping(true);
+      }
+    });
+
+    // Listen for stop typing
+    socket.on('user-stop-typing', (data: any) => {
+      if (data.userId !== user?.id) {
+        setIsTyping(false);
+      }
+    });
+
+    // Listen for chat deletion
+    socket.on('chat-deleted', (data: any) => {
+      if (data.chatId === chatRoomId) {
+        toast({
+          title: "Chat Deleted",
+          description: "This chat has been deleted.",
+          variant: "destructive",
+        });
+      }
+    });
+
+    return () => {
+      socket.off('new-message');
+      socket.off('user-typing');
+      socket.off('user-stop-typing');
+      socket.off('chat-deleted');
+    };
+  }, [socket, user, chatRoomId]);
 
   const fetchMessages = async (roomId: string) => {
     try {
       setIsLoading(true);
       const apiMessages = await chatApi.getMessages(roomId);
-      const formattedMessages = apiMessages.map((msg: ApiMessage) => ({
-        id: msg.id,
-        content: msg.content,
-        sender: msg.sender_id === user?.id ? 'user' : 'other',
-        timestamp: new Date(msg.created_at),
-        status: 'sent',
-        type: 'text',
-        reactions: {}
-      }));
+      // First, create a map of messages by id
+      const msgMap: Record<string, any> = {};
+      apiMessages.forEach((msg: any) => { msgMap[msg.id] = msg; });
+      // Then, format messages and reconstruct replyTo
+      const formattedMessages = apiMessages.map((msg: any) => {
+        // Determine if this is an image message (base64 data URL)
+        const isImageMessage = msg.content.startsWith('data:image/');
+        const messageType = isImageMessage ? 'image' : 'text';
+        let replyTo: any = undefined;
+        if (msg.reply_to_id && msgMap[msg.reply_to_id]) {
+          replyTo = {
+            id: msgMap[msg.reply_to_id].id,
+            content: msgMap[msg.reply_to_id].content
+          };
+        }
+        return {
+          id: msg.id,
+          content: isImageMessage ? `📷 Image` : msg.content,
+          sender: msg.sender_id === user?.id ? 'user' : 'other',
+          timestamp: new Date(msg.created_at),
+          status: 'sent',
+          type: messageType,
+          imageUrl: isImageMessage ? msg.content : undefined,
+          reactions: {},
+          replyTo
+        };
+      });
       setMessages(formattedMessages);
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -161,76 +313,64 @@ export function ChatWindow({
   };
 
   const handleSendMessage = async () => {
-    if (!newMessage.trim()) return;
-    if (!user?.id) {
-      toast({
-        title: "Error",
-        description: "You must be logged in to send messages",
-        variant: "destructive",
-      });
+    console.log('Send button clicked', { chatRoomId, newMessage, user });
+    if (!newMessage.trim() || !user || !chatRoomId) {
+      console.log('Early return in handleSendMessage', { newMessage, user, chatRoomId });
       return;
     }
 
-    if (!userRole) {
-      toast({
-        title: "Error",
-        description: "You must have a valid role to send messages",
-        variant: "destructive",
-      });
-      return;
-    }
+    const content = newMessage.trim();
+    setNewMessage('');
 
-    let roomId = chatRoomId;
-
-    // If no chatRoomId, find or create one
-    if (!roomId) {
-      try {
-        const tenant_id = userRole === 'tenant' ? user.id : undefined;
-        const landlord_id = userRole === 'tenant' ? landlordId : user.id;
-        const chatRoom = await chatApi.findOrCreateChatRoom(
-          tenant_id,
-          landlord_id,
-          propertyId
-        );
-        roomId = chatRoom.id;
-        setChatRoomId(roomId);
-        await fetchMessages(roomId);
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Could not create or find chat room.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
+    // Create temporary message for optimistic UI
     const tempMessage: Message = {
-      id: Date.now().toString(),
-      content: newMessage,
-      sender: userRole === 'tenant' ? 'user' : 'landlord',
+      id: `temp-${Date.now()}`,
+      content,
+      sender: 'user',
       timestamp: new Date(),
       status: 'sending',
       type: 'text',
-      replyTo: replyTo || undefined,
-      reactions: {}
+      reactions: {},
+      replyTo: replyTo || undefined
     };
 
     setMessages(prev => [...prev, tempMessage]);
-    setNewMessage('');
     setReplyTo(null);
 
+    const replyToId = replyTo && isRealUuid(replyTo.id) ? replyTo.id : null;
+
     try {
+      // Send via WebSocket first for real-time delivery
+      sendMessage({
+        chatId: chatRoomId,
+        senderId: user.id,
+        content,
+        senderType: userRole as 'tenant' | 'landlord'
+      });
+
+      // Also send via API to persist to database
       const sentMessage = await chatApi.sendMessage(
-        roomId!,
+        chatRoomId,
         user.id,
-        newMessage,
+        content,
         userRole,
-        landlordId
+        replyToId
       );
 
-      // After sending, re-fetch all messages to ensure correct sender alignment
-      await fetchMessages(roomId!);
+      // Update the temporary message with the real one
+      setMessages(prev => prev.map(m => {
+        if (m.id === tempMessage.id) {
+          let replyTo = undefined;
+          if (replyToId) {
+            const referenced = prev.find(msg => msg.id === replyToId);
+            if (referenced) {
+              replyTo = { id: referenced.id, content: referenced.content };
+            }
+          }
+          return { ...m, id: sentMessage.id, status: 'sent', replyTo };
+        }
+        return m;
+      }));
     } catch (error: any) {
       setMessages(prev => prev.map(m => 
         m.id === tempMessage.id 
@@ -243,6 +383,30 @@ export function ChatWindow({
         variant: "destructive",
       });
     }
+  };
+
+  const handleTyping = () => {
+    if (!chatRoomId || !user) return;
+
+    // Send typing indicator
+    sendTyping({
+      chatId: chatRoomId,
+      userId: user.id,
+      userName: user.user_metadata?.full_name || user.email || 'User'
+    });
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Set timeout to stop typing indicator
+    typingTimeoutRef.current = setTimeout(() => {
+      sendStopTyping({
+        chatId: chatRoomId,
+        userId: user.id
+      });
+    }, 2000);
   };
 
   const scrollToBottom = () => {
@@ -277,13 +441,27 @@ export function ChatWindow({
     }
   };
 
-  const handleDeleteMessage = (messageId: string) => {
-    setMessages(messages.map(msg => 
-      msg.id === messageId 
-        ? { ...msg, isDeleted: true, content: '' }
-        : msg
-    ));
-    setActiveMenuId(null);
+  const handleReplySnippetClick = (originalMessageId: string) => {
+    setHighlightedMessageId(originalMessageId);
+    // Scroll to the original message
+    const el = document.getElementById(`message-${originalMessageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    // Remove highlight after 2 seconds
+    setTimeout(() => setHighlightedMessageId(null), 2000);
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!window.confirm('Are you sure you want to delete this message?')) return;
+    try {
+      await chatApi.deleteMessage(messageId);
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      setActiveMenuId(null);
+      toast({ title: 'Message deleted', variant: 'default' });
+    } catch (error) {
+      toast({ title: 'Error deleting message', description: error?.message || 'Failed to delete message', variant: 'destructive' });
+    }
   };
 
   const handleMessageClick = (messageId: string) => {
@@ -354,12 +532,87 @@ export function ChatWindow({
     setNewMessage(prev => prev + emoji);
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      // Handle file upload
-      console.log('File selected:', file);
+    if (!file) return;
+
+    // Check file size (limit to 10MB for all files)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please select a file smaller than 10MB.",
+        variant: "destructive",
+      });
+      return;
     }
+
+    // Show optimistic message
+    const optimisticMessage: Message = {
+      id: `temp-${Date.now()}`,
+      content: JSON.stringify({ name: file.name, url: '', type: file.type }),
+      sender: 'user',
+      timestamp: new Date(),
+      status: 'sending',
+      type: file.type.startsWith('image/') ? 'image' : 'file',
+      imageUrl: '',
+      reactions: {}
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+    scrollToBottom();
+
+    // Upload to Supabase Storage
+    const filePath = `chat/${Date.now()}_${file.name}`;
+    const { data, error } = await supabase.storage.from('chat-files').upload(filePath, file, { upsert: false });
+    if (error) {
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      toast({
+        title: "Upload failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    // Get public URL
+    const { publicUrl } = supabase.storage.from('chat-files').getPublicUrl(filePath).data;
+    if (!publicUrl) {
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      toast({
+        title: "URL error",
+        description: "Could not get file URL.",
+        variant: "destructive",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Send the message with file info as JSON
+    if (chatRoomId && user) {
+      const userRole = getCurrentUserRole(user);
+      const senderType = userRole === 'tenant' ? 'tenant' : 'landlord';
+      const fileInfo = JSON.stringify({ name: file.name, url: publicUrl, type: file.type });
+      try {
+        await chatApi.sendMessage(
+          chatRoomId,
+          user.id,
+          fileInfo,
+          senderType
+        );
+        setMessages(prev => prev.map(msg =>
+          msg.id === optimisticMessage.id
+            ? { ...msg, status: 'sent', content: fileInfo, imageUrl: publicUrl }
+            : msg
+        ));
+      } catch (error) {
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+        toast({
+          title: "Send failed",
+          description: "Could not send file message.",
+          variant: "destructive",
+        });
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const formatTimestamp = (date: Date) => {
@@ -394,40 +647,46 @@ export function ChatWindow({
   const messageGroups = groupMessagesByDate(displayedMessages);
 
   return (
-    <Card className={`w-full ${isFullPage ? 'h-full' : 'h-[500px]'} flex flex-col`}>
-      {/* Property Context Header */}
-      <div className="p-3 border-b bg-white">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-lg overflow-hidden">
-            <img
-              src={propertyImage}
-              alt={propertyTitle || "Modern Downtown Apartment"}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold truncate">{propertyTitle || "Modern Downtown Apartment"}</h2>
+    <div className={`flex flex-col h-full ${isFullPage ? 'h-screen' : 'h-[600px]'} bg-white overflow-hidden`}>
+      {/* Header */}
+      <div className="relative flex items-center justify-between px-6 py-4 border-b bg-white">
+        <div className="flex items-center gap-4">
+          <img
+            src={propertyImage}
+            alt={propertyTitle}
+            className="w-12 h-12 rounded-lg object-cover"
+          />
+          <div>
             <div className="flex items-center gap-2">
-              <Avatar className="h-5 w-5">
+              <h3 className="font-semibold text-lg text-gray-900">{propertyTitle}</h3>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <Avatar className="h-6 w-6">
                 <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
-                  {currentLandlordName.charAt(0)}
+                  {userRole === 'landlord'
+                    ? (tenantName ? tenantName.charAt(0) : 'T')
+                    : (landlordName ? landlordName.charAt(0) : 'L')}
                 </div>
               </Avatar>
-              <span className="text-xs text-gray-600">{currentLandlordName}</span>
-              <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
-                Online
-              </Badge>
+              <span className="text-xs text-gray-600 font-semibold">
+                {userRole === 'landlord' ? tenantName : landlordName}
+              </span>
             </div>
           </div>
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none"
+            aria-label="Close chat"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
-      
-      {/* Messages Area */}
-      <ScrollArea 
-        className="flex-1 p-3 bg-gray-50"
-        onScroll={handleScroll}
-        ref={scrollAreaRef}
-      >
+
+      {/* Messages */}
+      <div className="flex-1 px-6 py-4 bg-white overflow-y-auto overflow-x-hidden" ref={scrollAreaRef}>
         <div className="space-y-4">
           {Object.entries(messageGroups).map(([date, messages]) => (
             <div key={date} className="space-y-3">
@@ -439,220 +698,387 @@ export function ChatWindow({
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex ${
-                    message.sender === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
+                  id={`message-${message.id}`}
+                  className={`flex items-center mb-3 ${message.sender === 'user' ? 'justify-end' : 'justify-start'} group`}
+                  style={{ width: '100%' }}
+                  onMouseEnter={() => handleMessageMouseEnter(message.id)}
+                  onMouseLeave={handleMessageMouseLeave}
                 >
-                  <div
-                    className={`flex items-end gap-2 max-w-[80%] group ${
-                      message.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
-                    }`}
-                  >
-                    <Avatar className="h-6 w-6">
-                      <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
-                        {message.sender === 'user' ? 'U' : currentLandlordName.charAt(0)}
-                      </div>
-                    </Avatar>
-                    <div
-                      className={`rounded-lg p-2 relative ${
-                        message.sender === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-white shadow-sm'
-                      }`}
-                      onClick={() => handleMessageClick(message.id)}
-                      onMouseEnter={() => handleMessageMouseEnter(message.id)}
-                      onMouseLeave={handleMessageMouseLeave}
-                    >
-                      {message.replyTo && (
-                        <div className="text-xs opacity-70 mb-1 border-l-2 pl-2 border-current">
-                          Replying to: {message.replyTo.content}
-                        </div>
-                      )}
-                      {message.type === 'image' && message.imageUrl ? (
-                        <img 
-                          src={message.imageUrl} 
-                          alt="Shared image" 
-                          className="max-w-[180px] rounded-lg mb-1"
-                        />
-                      ) : null}
-                      {message.isDeleted ? (
-                        <p className={`text-sm italic ${
-                          message.sender === 'user' 
-                            ? 'text-primary-foreground/70' 
-                            : 'text-gray-600'
-                        }`}>This message was deleted</p>
-                      ) : (
-                        <p className="text-sm">{message.content}</p>
-                      )}
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <span className="text-[10px] opacity-70">
-                                {formatTimestamp(message.timestamp)}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{message.timestamp.toLocaleString()}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        {message.sender === 'user' && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <span className="text-[10px] opacity-70">
-                                  {getStatusIcon(message.status)}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{message.status.charAt(0).toUpperCase() + message.status.slice(1)}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      {/* Reactions */}
-                      {Object.entries(message.reactions).length > 0 && (
-                        <div className={`absolute -bottom-3 flex gap-0.5 ${
-                          message.sender === 'user' ? '-left-3' : '-right-3'
-                        }`}>
-                          {Object.entries(message.reactions).map(([reaction, userIds]) => (
-                            <Badge 
-                              key={reaction} 
-                              variant="secondary" 
-                              className={`text-xs px-1.5 py-0.5 ${
-                                message.sender === 'user'
-                                  ? 'bg-white/90 text-primary shadow-sm'
-                                  : (userIds as string[]).includes('user')
-                                    ? 'bg-primary/20 text-primary'
-                                    : ''
-                              }`}
-                            >
-                              {reaction} {(userIds as string[]).length}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                      <div 
-                        id={`message-menu-${message.id}`}
-                        className={`absolute right-0 top-0 -mr-8 rounded-lg shadow-lg border p-1 min-w-[120px] z-50 ${
-                          message.sender === 'user' 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'bg-white'
-                        } ${
-                          activeMenuId === message.id || hoveredMessageId === message.id ? 'block' : 'hidden'
-                        }`}
-                      >
-                        {message.sender === 'user' && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={`w-full justify-start text-xs h-7 ${
-                                message.sender === 'user' 
-                                  ? 'hover:bg-primary-foreground/20' 
-                                  : 'hover:bg-gray-100'
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditMessage(message);
-                              }}
-                            >
-                              <Edit2 className="h-3 w-3 mr-2" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={`w-full justify-start text-xs h-7 text-red-400 hover:text-red-300 ${
-                                message.sender === 'user' 
-                                  ? 'hover:bg-primary-foreground/20' 
-                                  : 'hover:bg-gray-100'
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteMessage(message.id);
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3 mr-2" />
-                              Delete
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={`w-full justify-start text-xs h-7 ${
-                            message.sender === 'user' 
-                              ? 'hover:bg-primary-foreground/20' 
-                              : 'hover:bg-gray-100'
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setReplyTo(message);
-                          }}
-                        >
-                          <Reply className="h-3 w-3 mr-2" />
-                          Reply
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={`w-full justify-start text-xs h-7 ${
-                            message.sender === 'user' 
-                              ? 'hover:bg-primary-foreground/20' 
-                              : 'hover:bg-gray-100'
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(message.content);
-                            toast({
-                              title: "Copied to clipboard",
-                              description: "Message content has been copied.",
-                            });
-                          }}
-                        >
-                          <Copy className="h-3 w-3 mr-2" />
-                          Copy
-                        </Button>
-                        <div className={`px-2 py-1.5 border-t mt-1 ${
-                          message.sender === 'user' 
-                            ? 'border-primary-foreground/20' 
-                            : 'border-gray-200'
-                        }`}>
-                          <div className="flex gap-1 justify-center">
-                            {REACTIONS.map(({ emoji, icon: Icon }) => (
-                              <Button
-                                key={emoji}
-                                variant="ghost"
-                                size="icon"
-                                className={`h-6 w-6 ${
-                                  message.sender === 'user' 
-                                    ? 'hover:bg-primary-foreground/20' 
-                                    : 'hover:bg-gray-100'
-                                } ${
-                                  message.reactions[emoji]?.includes('user') 
-                                    ? 'bg-primary/20 text-primary' 
-                                    : ''
-                                }`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReaction(message.id, emoji);
-                                }}
+                  <div className={`flex items-end gap-2 min-w-0 flex-row`}>
+                    {message.sender === 'user' ? (
+                      <>
+                        {/* Options menu on the outside left */}
+                        <div className="flex items-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className={`h-6 w-6 p-0 transition-opacity duration-200 ${hoveredMessageId === message.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                tabIndex={0}
+                                aria-label="Message options"
+                                onClick={e => { e.stopPropagation(); }}
                               >
-                                <Icon className="h-3 w-3" />
+                                <MoreVertical className="h-3 w-3" />
                               </Button>
-                            ))}
-                          </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setReplyTo(message)}>
+                                <Reply className="h-4 w-4 mr-2" />
+                                Reply
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEditMessage(message)}>
+                                <Edit2 className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(message.content)}>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteMessage(message.id)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                      </div>
-                    </div>
+                        {/* Message bubble */}
+                        <div
+                          className={`rounded-2xl p-2 px-4 py-2 pb-1 pr-2 relative max-w-full min-w-0 break-words whitespace-pre-line overflow-x-hidden bg-blue-500 text-white ${highlightedMessageId === message.id ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
+                          style={{ wordBreak: 'break-word', overflowY: 'visible' }}
+                          onClick={() => handleMessageClick(message.id)}
+                        >
+                          {message.replyTo && (
+                            <div
+                              className="text-xs opacity-70 mb-1 border-l-2 pl-2 border-current text-blue-700 bg-blue-50 rounded cursor-pointer hover:bg-blue-100 flex items-center gap-2"
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleReplySnippetClick(message.replyTo.id);
+                              }}
+                            >
+                              {"Replying to: "}
+                              {(() => {
+                                try {
+                                  const parsed = JSON.parse(message.replyTo.content);
+                                  if (parsed && typeof parsed === 'object' && parsed.url && parsed.name) {
+                                    if (parsed.type && parsed.type.startsWith('image/')) {
+                                      return (
+                                        <>
+                                          <img
+                                            src={parsed.url}
+                                            alt={parsed.name}
+                                            className="inline-block w-8 h-8 object-cover rounded mr-1"
+                                            style={{ verticalAlign: 'middle' }}
+                                          />
+                                          <span>{parsed.name}</span>
+                                        </>
+                                      );
+                                    }
+                                    return (
+                                      <>
+                                        <span role="img" aria-label="File">📎</span> {parsed.name}
+                                      </>
+                                    );
+                                  }
+                                } catch {}
+                                // fallback to text
+                                return message.replyTo.content.length > 40
+                                  ? message.replyTo.content.slice(0, 40) + '...'
+                                  : message.replyTo.content;
+                              })()}
+                            </div>
+                          )}
+                          {(() => {
+                            // Try to parse content as file info
+                            let fileInfo: { name: string, url: string, type?: string } | null = null;
+                            try {
+                              const parsed = JSON.parse(message.content);
+                              if (parsed && typeof parsed === 'object' && parsed.url && parsed.name) {
+                                fileInfo = parsed;
+                              }
+                            } catch {}
+                            
+                            if (fileInfo && fileInfo.type?.startsWith('image/')) {
+                              // Render as image
+                              return (
+                                <div className="relative pb-4">
+                                  <img 
+                                    src={fileInfo.url} 
+                                    alt="Shared image" 
+                                    className="max-w-full h-auto rounded-2xl mb-1"
+                                    style={{ display: 'block', margin: 0 }}
+                                  />
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else if (fileInfo) {
+                              // Render as file message
+                              return (
+                                <div
+                                  className="relative pb-4 flex items-center gap-2 min-w-0"
+                                  style={{ overflowY: 'visible', overflow: 'visible', height: 'auto', maxHeight: 'none' }}
+                                >
+                                  <Paperclip className="w-5 h-5 text-blue-500" />
+                                  <a
+                                    href={fileInfo.url}
+                                    download={fileInfo.name}
+                                    className="underline text-blue-600 break-all"
+                                    style={{ overflow: 'visible', overflowY: 'visible', whiteSpace: 'normal', height: 'auto', maxHeight: 'none' }}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {fileInfo.name}
+                                  </a>
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else if (message.type === 'image' && message.imageUrl) {
+                              // Fallback for legacy image messages
+                              return (
+                                <div className="relative pb-4">
+                                  <img 
+                                    src={message.imageUrl} 
+                                    alt="Shared image" 
+                                    className="max-w-full h-auto rounded-2xl mb-1"
+                                    style={{ display: 'block', margin: 0 }}
+                                  />
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else if (!message.isDeleted && message.type === 'text') {
+                              // Render as text message
+                              return (
+                                <div className="relative pb-4">
+                                  <span className="text-sm m-0 break-words whitespace-pre-line block">
+                                    {message.content}
+                                  </span>
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              return null;
+                            }
+                          })()}
+                        </div>
+                        <Avatar className="h-6 w-6">
+                          <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
+                            U
+                          </div>
+                        </Avatar>
+                      </>
+                    ) : (
+                      <>
+                        <Avatar className="h-6 w-6">
+                          <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
+                            {currentLandlordName.charAt(0)}
+                          </div>
+                        </Avatar>
+                        {/* Message bubble */}
+                        <div
+                          className={`rounded-2xl p-2 px-4 py-2 pb-1 pr-2 relative max-w-full min-w-0 break-words whitespace-pre-line overflow-x-hidden bg-gray-100 text-gray-900 ${highlightedMessageId === message.id ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
+                          style={{ wordBreak: 'break-word', overflowY: 'visible' }}
+                          onClick={() => handleMessageClick(message.id)}
+                        >
+                          {message.replyTo && (
+                            <div
+                              className="text-xs opacity-70 mb-1 border-l-2 pl-2 border-current text-blue-700 bg-blue-50 rounded cursor-pointer hover:bg-blue-100 flex items-center gap-2"
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleReplySnippetClick(message.replyTo.id);
+                              }}
+                            >
+                              {"Replying to: "}
+                              {(() => {
+                                try {
+                                  const parsed = JSON.parse(message.replyTo.content);
+                                  if (parsed && typeof parsed === 'object' && parsed.url && parsed.name) {
+                                    if (parsed.type && parsed.type.startsWith('image/')) {
+                                      return (
+                                        <>
+                                          <img
+                                            src={parsed.url}
+                                            alt={parsed.name}
+                                            className="inline-block w-8 h-8 object-cover rounded mr-1"
+                                            style={{ verticalAlign: 'middle' }}
+                                          />
+                                          <span>{parsed.name}</span>
+                                        </>
+                                      );
+                                    }
+                                    return (
+                                      <>
+                                        <span role="img" aria-label="File">📎</span> {parsed.name}
+                                      </>
+                                    );
+                                  }
+                                } catch {}
+                                // fallback to text
+                                return message.replyTo.content.length > 40
+                                  ? message.replyTo.content.slice(0, 40) + '...'
+                                  : message.replyTo.content;
+                              })()}
+                            </div>
+                          )}
+                          {(() => {
+                            // Try to parse content as file info
+                            let fileInfo: { name: string, url: string, type?: string } | null = null;
+                            try {
+                              const parsed = JSON.parse(message.content);
+                              if (parsed && typeof parsed === 'object' && parsed.url && parsed.name) {
+                                fileInfo = parsed;
+                              }
+                            } catch {}
+                            
+                            if (fileInfo && fileInfo.type?.startsWith('image/')) {
+                              // Render as image
+                              return (
+                                <div className="relative pb-4">
+                                  <img 
+                                    src={fileInfo.url} 
+                                    alt="Shared image" 
+                                    className="max-w-full h-auto rounded-2xl mb-1"
+                                    style={{ display: 'block', margin: 0 }}
+                                  />
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else if (fileInfo) {
+                              // Render as file message
+                              return (
+                                <div
+                                  className="relative pb-4 flex items-center gap-2 min-w-0"
+                                  style={{ overflowY: 'visible', overflow: 'visible', height: 'auto', maxHeight: 'none' }}
+                                >
+                                  <Paperclip className="w-5 h-5 text-blue-500" />
+                                  <a
+                                    href={fileInfo.url}
+                                    download={fileInfo.name}
+                                    className="underline text-blue-600 break-all"
+                                    style={{ overflow: 'visible', overflowY: 'visible', whiteSpace: 'normal', height: 'auto', maxHeight: 'none' }}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {fileInfo.name}
+                                  </a>
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else if (message.type === 'image' && message.imageUrl) {
+                              // Fallback for legacy image messages
+                              return (
+                                <div className="relative pb-4">
+                                  <img 
+                                    src={message.imageUrl} 
+                                    alt="Shared image" 
+                                    className="max-w-full h-auto rounded-2xl mb-1"
+                                    style={{ display: 'block', margin: 0 }}
+                                  />
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else if (!message.isDeleted && message.type === 'text') {
+                              // Render as text message
+                              return (
+                                <div className="relative pb-4">
+                                  <span className="text-sm m-0 break-words whitespace-pre-line block">
+                                    {message.content}
+                                  </span>
+                                  <div className="absolute bottom-0 right-1 flex flex-row items-center gap-1">
+                                    <span className="text-[10px] opacity-70 align-baseline">
+                                      {getStatusIcon(message.status)}
+                                    </span>
+                                    <span className="text-[10px] opacity-70 whitespace-nowrap align-baseline">
+                                      {formatTimestamp(message.timestamp)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              return null;
+                            }
+                          })()}
+                        </div>
+                        {/* Options menu on the outside right */}
+                        <div className="flex items-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className={`h-6 w-6 p-0 transition-opacity duration-200 ${hoveredMessageId === message.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                tabIndex={0}
+                                aria-label="Message options"
+                                onClick={e => { e.stopPropagation(); }}
+                              >
+                                <MoreVertical className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setReplyTo(message)}>
+                                <Reply className="h-4 w-4 mr-2" />
+                                Reply
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(message.content)}>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           ))}
+          {/* Typing Indicator */}
           {isTyping && (
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <div className="flex gap-1">
@@ -663,91 +1089,61 @@ export function ChatWindow({
               <span>{currentLandlordName} is typing...</span>
             </div>
           )}
-          <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
-
-      {/* Scroll to Bottom Button */}
-      {showScrollButton && (
-        <Button 
-          variant="secondary"
-          size="icon" 
-          className="absolute bottom-20 right-6 rounded-full shadow-lg"
-          onClick={scrollToBottom}
-        >
-          <ChevronDown className="h-4 w-4" />
-        </Button>
-      )}
-
+        <div ref={messagesEndRef} />
+      </div>
       {/* Input Area */}
-      <div className="p-3 border-t bg-white">
-        {replyTo && (
-          <div className="flex items-center justify-between mb-2 p-2 bg-gray-50 rounded-md">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">Replying to: {replyTo.content}</p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-4 w-4"
-              onClick={() => setReplyTo(null)}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-        {editingMessage && (
-          <div className="flex items-center justify-between mb-2 p-2 bg-gray-50 rounded-md">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500">Editing message</p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-4 w-4"
-              onClick={() => {
-                setEditingMessage(null);
-                setNewMessage('');
-              }}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-        <div className="flex gap-2">
+      <div className="px-6 py-4 border-t bg-white">
+        <div className="flex items-center gap-2 bg-gray-50 rounded-full px-3 py-2 shadow-sm">
+          <button
+            type="button"
+            className="text-gray-400 hover:text-gray-600 focus:outline-none"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach file"
+          >
+            <Paperclip className="h-5 w-5" />
+          </button>
           <input
             type="file"
             ref={fileInputRef}
             onChange={handleFileSelect}
-            accept="image/*"
             className="hidden"
           />
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="shrink-0 h-8 w-8"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
           <EmojiPicker onEmojiSelect={handleEmojiSelect} />
           <Input
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              handleTyping();
+            }}
             onKeyPress={handleKeyPress}
-            placeholder={editingMessage ? "Edit your message..." : "Type a message..."}
-            className="h-8 text-sm"
+            placeholder="Type a message..."
+            className="flex-1 border-0 bg-transparent focus:ring-0 focus:outline-none px-2"
+            maxLength={MAX_MESSAGE_LENGTH}
           />
-          <Button 
-            onClick={editingMessage ? handleSaveEdit : handleSendMessage}
-            size="icon"
-            className="shrink-0 h-8 w-8 bg-primary hover:bg-primary/90"
-            disabled={!newMessage.trim()}
+          <Button
+            onClick={() => {
+              console.log('Send button onClick triggered');
+              handleSendMessage();
+            }}
+            disabled={!newMessage.trim() || !isConnected}
+            className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-2 disabled:opacity-50"
+            aria-label="Send message"
           >
-            {editingMessage ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+            <Send className="h-5 w-5" />
           </Button>
         </div>
       </div>
-    </Card>
+      {/* Add reply UI above the input area */}
+      {replyTo && (
+        <div className="flex items-center mb-2 px-6 py-2 bg-blue-50 border-l-4 border-blue-400 rounded">
+          <span className="font-medium text-blue-700 mr-2">Replying to:</span>
+          <span className="truncate flex-1 text-gray-700">{replyTo.content.length > 60 ? replyTo.content.slice(0, 60) + '...' : replyTo.content}</span>
+          <Button size="sm" variant="ghost" className="ml-2" onClick={() => setReplyTo(null)}>
+            Cancel
+          </Button>
+        </div>
+      )}
+    </div>
   );
-} 
+}

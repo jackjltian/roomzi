@@ -2,30 +2,45 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut } from 'lucide-react';
+import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabaseClient';
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
-
-  const handleCreateListing = () => {
-    navigate('/create-listing');
-  };
-
-  const totalIncome = properties.reduce((sum, property) => sum + property.price, 0);
-  const occupiedProperties = properties.filter(p => !p.available).length;
+  const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
+  const [showBanner, setShowBanner] = useState(false);
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
   const userId = user?.id || '';
 
+  const handleCreateListing = () => {
+    navigate('/create-listing');
+  };
+
+  const handleManageListing = (listingId) => {
+    navigate(`/manage-listing/${listingId}`);
+  }
+
+  const handleViewPayments = () => {
+    navigate('/payments');
+  }
+
+  const totalIncome = properties.reduce((sum, property) => property.landlord_id === userId ? sum + property.price : sum, 0);
+  const occupiedProperties = properties.filter(p => p.landlord_id === userId && !p.available).length;
+
   useEffect(() => {
     async function fetchProperties() {
-      const response = await fetch('http://localhost:3001/api/landlord/get-listings', {
+      if (!userId) return;
+      
+      console.log('Fetching properties for user ID:', userId);
+      
+      const response = await fetch(`http://localhost:3001/api/landlords/${userId}/listings`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'
@@ -33,13 +48,38 @@ const LandlordDashboard = () => {
         credentials: 'include',
       });
       const data = await response.json();
+      console.log('API response:', data);
+      
       if (response.ok) {
-        setProperties(data);
+        // The backend returns data wrapped in successResponse format
+        const listings = data.data || data;
+        console.log('Filtered listings:', listings);
+        setProperties(listings);
+      } else {
+        console.error('Failed to fetch properties:', data);
       }
     }
 
     fetchProperties();
-  }, []);
+  }, [userId]);
+
+  useEffect(() => {
+    async function fetchPendingMaintenance() {
+      if (!userId) return;
+      const lastSeen = localStorage.getItem('maintenance_last_seen') || '0';
+      const { data, error } = await supabase
+        .from('maintenance_requests')
+        .select('createdAt', { count: 'exact' })
+        .eq('landlordId', userId)
+        .eq('status', 'Pending');
+      if (!error && data) {
+        const newRequests = data.filter((r) => new Date(r.createdAt).getTime() > Number(lastSeen));
+        setPendingMaintenanceCount(newRequests.length);
+        setShowBanner(newRequests.length > 0);
+      }
+    }
+    fetchPendingMaintenance();
+  }, [userId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
@@ -93,13 +133,26 @@ const LandlordDashboard = () => {
           </div>
         </div>
 
+        {/* Notification banner for pending requests */}
+        {showBanner && (
+          <div className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded mb-4 flex items-center gap-2 shadow">
+            <Wrench className="w-5 h-5" />
+            {pendingMaintenanceCount} new maintenance request{pendingMaintenanceCount > 1 ? 's' : ''}!
+            <Button size="sm" variant="link" onClick={() => {
+              navigate('/landlord/maintenance-requests');
+            }}>
+              View
+            </Button>
+          </div>
+        )}
+
         {/* Stats Overview */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <Card className="p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 mb-1">Total Properties</p>
-                <p className="text-3xl font-bold">{properties.length}</p>
+                <p className="text-3xl font-bold">{properties.filter(property => property.landlord_id === userId).length}</p>
               </div>
               <div className="w-12 h-12 bg-blue-400 rounded-lg flex items-center justify-center">
                 <Home className="w-6 h-6 text-white" />
@@ -113,9 +166,9 @@ const LandlordDashboard = () => {
                 <p className="text-green-100 mb-1">Monthly Income</p>
                 <p className="text-3xl font-bold">${totalIncome.toLocaleString()}</p>
               </div>
-              <div className="w-12 h-12 bg-green-400 rounded-lg flex items-center justify-center">
+              <Button className="w-12 h-12 bg-green-400 rounded-lg flex items-center justify-center hover:bg-green-600" onClick={handleViewPayments}>
                 <Calendar className="w-6 h-6 text-white" />
-              </div>
+              </Button>
             </div>
           </Card>
 
@@ -144,8 +197,6 @@ const LandlordDashboard = () => {
         {/* Properties Grid */}
         <div className="grid lg:grid-cols-2 xl:grid-cols-3 gap-8">
           {properties.map((property) => (
-            property.landlord_id === userId
-            &&
             <Card key={property.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 bg-white">
               <div className="aspect-video overflow-hidden">
                 <img
@@ -185,7 +236,7 @@ const LandlordDashboard = () => {
                 </div>
 
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => handleManageListing(property.id)}>
                     Manage
                   </Button>
                   <Button size="sm" variant="outline" className="flex-1">
@@ -243,6 +294,20 @@ const LandlordDashboard = () => {
           >
             <Plus className="w-5 h-5 mb-1" />
             <span className="text-xs">Add Listing</span>
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 relative"
+            onClick={() => navigate('/landlord/maintenance-requests')}
+          >
+            <Wrench className="w-5 h-5 mb-1" />
+            <span className="text-xs">Maintenance</span>
+            {pendingMaintenanceCount > 0 && (
+              <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                {pendingMaintenanceCount}
+              </span>
+            )}
           </Button>
           <Button 
             variant="ghost" 

@@ -17,17 +17,28 @@ export interface Message {
   content: string;
   sender_type: 'tenant' | 'landlord';
   created_at: string;
+  image_url?: string;
 }
 
 export const chatApi = {
   // Create a new chat room
-  createChatRoom: async (tenantId: string, landlordId: string, propertyId: string) => {
+  createChatRoom: async (
+    tenantId: string,
+    landlordId: string,
+    propertyId: string,
+    tenantName?: string,
+    propertyName?: string,
+    landlordName?: string
+  ) => {
     try {
-      console.log('Creating chat room:', { tenantId, landlordId, propertyId });
+      console.log('Creating chat room:', { tenantId, landlordId, propertyId, tenantName, propertyName, landlordName });
       const response = await axios.post(`${API_URL}/chat/rooms`, {
         tenantId,
         landlordId,
-        propertyId
+        propertyId,
+        tenantName,
+        propertyName,
+        landlordName
       });
       console.log('Chat room created:', response.data);
       return response.data;
@@ -69,16 +80,16 @@ export const chatApi = {
     senderId: string,
     content: string,
     senderType: 'tenant' | 'landlord',
-    landlordId?: string
+    replyToId?: string
   ) => {
     try {
-      console.log('Sending message:', { chatId, senderId, content, senderType, landlordId });
+      console.log('Sending message:', { chatId, senderId, content, senderType, replyToId });
       const response = await axios.post(`${API_URL}/chat/messages`, {
-        chatId,
-        senderId,
+        chat_id: chatId,
+        sender_id: senderId,
         content,
-        senderType,
-        ...(landlordId ? { landlordId } : {})
+        sender_type: senderType,
+        reply_to_id: replyToId || null
       });
       console.log('Message sent:', response.data);
       return response.data;
@@ -89,16 +100,50 @@ export const chatApi = {
   },
 
   // Find or create a chat room
-  findOrCreateChatRoom: async (tenantId: string, landlordId: string, propertyId: string) => {
+  findOrCreateChatRoom: async (
+    tenantId: string,
+    landlordId: string,
+    propertyId: string,
+    tenantName?: string,
+    propertyName?: string,
+    landlordName?: string
+  ) => {
     try {
       const response = await axios.post(`${API_URL}/chat/rooms/find-or-create`, {
         tenantId,
         landlordId,
-        propertyId
+        propertyId,
+        tenantName,
+        propertyName,
+        landlordName
       });
       return response.data;
     } catch (error) {
       console.error('Error finding or creating chat room:', error);
+      throw error;
+    }
+  },
+
+  // Delete a message by ID
+  deleteMessage: async (messageId: string) => {
+    try {
+      const response = await axios.delete(`${API_URL}/chats/messages/${messageId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      throw error;
+    }
+  },
+
+  // Delete a chat room (landlord only)
+  deleteChatRoom: async (roomId: string, landlordId: string) => {
+    try {
+      const response = await axios.delete(`${API_URL}/chat/rooms/${roomId}`, {
+        data: { landlordId }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting chat room:', error);
       throw error;
     }
   }

@@ -1,26 +1,74 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
 
 const TenantMyHouse = () => {
   const navigate = useNavigate();
-  const [hasRental, setHasRental] = useState(false); // Set to true to show rental details
-
-  // Mock rental data
-  const currentRental = {
-    propertyTitle: "Cozy 1BR Apartment",
-    address: "123 Oak Street, Downtown",
-    landlordName: "Mike Chen",
-    landlordPhone: "+1 (555) 987-6543",
-    landlordEmail: "mike.chen@email.com",
+  const { user } = useAuth();
+  const tenantId = user?.id;
+  const [hasRental, setHasRental] = useState(true); // Set to true to show rental details
+  const [currentRental, setCurrentRental] = useState({
+    id: "1",
+    propertyTitle: "My Rental Property",
+    address: "123 Main Street, New York, NY",
+    landlordName: "John Smith",
+    landlordPhone: "(555) 123-4567",
+    landlordEmail: "john.smith@email.com",
     rent: 2500,
     leaseStart: "January 1, 2024",
     leaseEnd: "December 31, 2024",
     image: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Using demo data instead of API call
+    // Uncomment the code below if you want to fetch real data from the API
+    /*
+    if (!tenantId) return;
+    
+    // Fetch tenant's rental data
+    fetch(`http://localhost:3001/api/tenants/${tenantId}/listings`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data && data.data.length > 0) {
+          const rental = data.data[0]; // Get the first rental
+          setCurrentRental({
+            id: rental.id,
+            propertyTitle: rental.title || "My Rental Property",
+            address: `${rental.address}, ${rental.city}, ${rental.state}`,
+            landlordName: rental.landlord_name || "Landlord",
+            landlordPhone: rental.landlord_phone || "N/A",
+            landlordEmail: "landlord@email.com", // This would come from landlord profile
+            rent: rental.price || 0,
+            leaseStart: "January 1, 2024", // This would come from lease data
+            leaseEnd: "December 31, 2024", // This would come from lease data
+            image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
+          });
+          setHasRental(true);
+        } else {
+          setHasRental(false);
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Error fetching tenant rental:', err);
+        setHasRental(false);
+        setLoading(false);
+      });
+    */
+  }, [tenantId]);
+
+  const handlePaymentsClick = () => {
+    if (currentRental && currentRental.id) {
+      navigate(`/tenant/payments/${currentRental.id}`);
+    } else {
+      navigate('/tenant/payments');
+    }
   };
 
   return (
@@ -48,7 +96,16 @@ const TenantMyHouse = () => {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!hasRental ? (
+        {loading ? (
+          // Loading state
+          <div className="text-center py-16">
+            <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Home className="w-12 h-12 text-gray-400 animate-pulse" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading...</h2>
+            <p className="text-gray-600">Fetching your rental information</p>
+          </div>
+        ) : !hasRental ? (
           // Empty state when no rental
           <div className="text-center py-16">
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -166,11 +223,11 @@ const TenantMyHouse = () => {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
               <div className="grid md:grid-cols-2 gap-4">
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={handlePaymentsClick}>
                   <DollarSign className="w-4 h-4 mr-2" />
-                  Payment History
+                  Payments
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate(`/tenant/maintenance/${currentRental.id}`)}>
                   <Home className="w-4 h-4 mr-2" />
                   Maintenance Request
                 </Button>
@@ -181,6 +238,10 @@ const TenantMyHouse = () => {
                 <Button variant="outline" className="justify-start">
                   <User className="w-4 h-4 mr-2" />
                   Lease Renewal
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => navigate('/tenant/financial-account')}>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Financial Account
                 </Button>
               </div>
             </Card>
