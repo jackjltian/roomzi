@@ -101,6 +101,7 @@ const App = () => (
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
                       <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="financial-account" element={<FinancialAccount />} />
                       <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
                       <Route path="maintenance/:listingId" element={<TenantMaintenanceRequest />} />

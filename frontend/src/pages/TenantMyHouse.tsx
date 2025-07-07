@@ -10,11 +10,25 @@ const TenantMyHouse = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const tenantId = user?.id;
-  const [hasRental, setHasRental] = useState(false);
-  const [currentRental, setCurrentRental] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [hasRental, setHasRental] = useState(true); // Set to true to show rental details
+  const [currentRental, setCurrentRental] = useState({
+    id: "1",
+    propertyTitle: "My Rental Property",
+    address: "123 Main Street, New York, NY",
+    landlordName: "John Smith",
+    landlordPhone: "(555) 123-4567",
+    landlordEmail: "john.smith@email.com",
+    rent: 2500,
+    leaseStart: "January 1, 2024",
+    leaseEnd: "December 31, 2024",
+    image: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
+  });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Using demo data instead of API call
+    // Uncomment the code below if you want to fetch real data from the API
+    /*
     if (!tenantId) return;
     
     // Fetch tenant's rental data
@@ -46,6 +60,7 @@ const TenantMyHouse = () => {
         setHasRental(false);
         setLoading(false);
       });
+    */
   }, [tenantId]);
 
   const handlePaymentsClick = () => {
