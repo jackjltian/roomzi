@@ -7,6 +7,7 @@ import {
   getChatMessages,
   deleteChat,
   deleteMessage,
+  markChatAsRead,
 } from "../controllers/chatController.js";
 
 const router = express.Router();
@@ -22,6 +23,9 @@ router.post("/", createChat);
 
 // DELETE /api/chats/:id - Delete chat
 router.delete("/:id", deleteChat);
+
+// PATCH /api/chats/:chatId/read - Mark chat as read
+router.patch("/:chatId/read", markChatAsRead);
 
 // GET /api/chats/:chatId/messages - Get messages for a chat
 router.get("/:chatId/messages", getChatMessages);

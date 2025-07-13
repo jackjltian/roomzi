@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, MessageCircle, Home, Calendar, User, X } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Home, User, X } from 'lucide-react';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
@@ -13,19 +13,19 @@ import { useToast } from '@/hooks/use-toast';
 interface Match {
   id: string;
   propertyId: string;
-  landlordId: string;
+  tenantId: string;
   propertyTitle: string;
-  landlordName: string;
-  landlordImage?: string;
-  landlord_name: string;
+  tenantName: string;
+  tenantImage?: string;
+  tenant_name: string;
   message: string;
   time: string;
   unread: boolean;
   propertyImage: string;
-  timestamp: number; // Added timestamp for sorting
+  timestamp: number;
 }
 
-const TenantMatches = () => {
+const LandlordMatches = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -35,9 +35,9 @@ const TenantMatches = () => {
   const [selectedChat, setSelectedChat] = useState<{
     propertyTitle: string;
     propertyImage: string;
-    landlordName: string;
-    landlordImage?: string;
-    landlordId: string;
+    tenantName: string;
+    tenantImage?: string;
+    tenantId: string;
     propertyId: string;
     chatRoomId: string;
   } | null>(null);
@@ -49,14 +49,12 @@ const TenantMatches = () => {
     try {
       setLoading(true);
       // Use the backend API endpoint that includes unread counts
-      const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${user.id}/tenant`);
+      const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${user.id}/landlord`);
       
       const chatArray = response?.data;
       if (chatArray && Array.isArray(chatArray)) {
-        
         // Transform the API response to match our Match interface
-        const transformedMatches: Match[] = chatArray.map((chat: any, index: number) => {
-          
+        const transformedMatches: Match[] = chatArray.map((chat: any) => {
           // Get the latest message info
           let message = "Click to start chatting";
           let time = new Date(chat.created_at).toLocaleDateString();
@@ -103,22 +101,20 @@ const TenantMatches = () => {
             }
           }
 
-          const transformedMatch = {
+          return {
             id: chat.id,
             propertyId: chat.property_id || '',
-            landlordId: chat.landlord_id,
+            tenantId: chat.tenant_id,
             propertyTitle: chat.propertyTitle || 'Unknown Property',
-            landlordName: chat.landlord_name || 'Unknown Landlord',
-            landlordImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.landlord_name || 'L')}&background=E0E7FF&color=3730A3`,
-            landlord_name: chat.landlord_name || 'Unknown Landlord',
+            tenantName: chat.tenant_name || 'Unknown Tenant',
+            tenantImage: `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.tenant_name || 'T')}&background=E0E7FF&color=3730A3`,
+            tenant_name: chat.tenant_name || 'Unknown Tenant',
             message: message,
             time: time,
             unread: chat.unreadCount > 0, // Use the unread count from backend
             propertyImage: propertyImage,
             timestamp: timestamp
           };
-          
-          return transformedMatch;
         });
         
         // Sort matches by timestamp (most recent first)
@@ -131,6 +127,7 @@ const TenantMatches = () => {
         setMatches([]);
       }
     } catch (error) {
+      console.error('Error fetching matches:', error);
       toast({
         title: "Error",
         description: "Failed to fetch matches. Please try again.",
@@ -154,7 +151,7 @@ const TenantMatches = () => {
         method: 'PATCH',
         body: JSON.stringify({
           userId: user?.id,
-          userType: 'tenant'
+          userType: 'landlord'
         })
       });
       
@@ -173,9 +170,9 @@ const TenantMatches = () => {
     setSelectedChat({
       propertyTitle: match.propertyTitle,
       propertyImage: match.propertyImage,
-      landlordName: match.landlordName,
-      landlordImage: match.landlordImage,
-      landlordId: match.landlordId,
+      tenantName: match.tenantName,
+      tenantImage: match.tenantImage,
+      tenantId: match.tenantId,
       propertyId: match.propertyId,
       chatRoomId: match.id,
     });
@@ -195,7 +192,7 @@ const TenantMatches = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/tenant')}
+                onClick={() => navigate('/landlord')}
                 className="mr-2"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -215,7 +212,7 @@ const TenantMatches = () => {
             <TabsTrigger value="messages">Viewings</TabsTrigger>
           </TabsList>
 
-        {/* Matches Tab */}
+          {/* Matches Tab */}
           <TabsContent value="matches" className="space-y-4">
             {/* Loading State */}
             {loading && (
@@ -245,7 +242,7 @@ const TenantMatches = () => {
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         <User className="w-4 h-4 inline mr-1" />
-                        {match.landlordName}
+                        {match.tenantName}
                       </p>
                       <p className="text-gray-700 mb-2 line-clamp-2">{match.message}</p>
                       <p className="text-xs text-gray-500">{match.time}</p>
@@ -274,15 +271,15 @@ const TenantMatches = () => {
             ))}
 
             {!loading && matches.length === 0 && (
-          <div className="text-center py-12">
-            <MessageCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-lg font-medium text-gray-500 mb-2">No matches yet</h3>
-            <p className="text-gray-400 mb-4">Start browsing properties to connect with landlords</p>
-            <Button onClick={() => navigate('/tenant')} className="roomzi-gradient">
-              Browse Properties
-            </Button>
-          </div>
-        )}
+              <div className="text-center py-12">
+                <MessageCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="text-lg font-medium text-gray-500 mb-2">No matches yet</h3>
+                <p className="text-gray-400 mb-4">Start browsing properties to connect with tenants</p>
+                <Button onClick={() => navigate('/landlord')} className="roomzi-gradient">
+                  Back to Dashboard
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* Messages Tab */}
@@ -315,7 +312,7 @@ const TenantMatches = () => {
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         <User className="w-4 h-4 inline mr-1" />
-                        {match.landlordName}
+                        {match.tenantName}
                       </p>
                       <p className="text-gray-700 mb-2 line-clamp-2">{match.message}</p>
                       <p className="text-xs text-gray-500">{match.time}</p>
@@ -347,9 +344,9 @@ const TenantMatches = () => {
               <div className="text-center py-12">
                 <MessageCircle className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                 <h3 className="text-lg font-medium text-gray-500 mb-2">No messages yet</h3>
-                <p className="text-gray-400 mb-4">Start browsing properties to connect with landlords</p>
-                <Button onClick={() => navigate('/tenant')} className="roomzi-gradient">
-                  Browse Properties
+                <p className="text-gray-400 mb-4">Start browsing properties to connect with tenants</p>
+                <Button onClick={() => navigate('/landlord')} className="roomzi-gradient">
+                  Back to Dashboard
                 </Button>
               </div>
             )}
@@ -371,17 +368,17 @@ const TenantMatches = () => {
             </Button>
 
             <div className="flex-1 min-h-0">
-            <ChatWindow
-              propertyTitle={selectedChat.propertyTitle}
-              propertyImage={selectedChat.propertyImage}
-              landlordName={selectedChat.landlordName}
-              landlordImage={selectedChat.landlordImage}
-              landlordId={selectedChat.landlordId}
-              propertyId={selectedChat.propertyId}
+              <ChatWindow
+                propertyTitle={selectedChat.propertyTitle}
+                propertyImage={selectedChat.propertyImage}
+                landlordName={user?.email || 'You'}
+                tenantName={selectedChat.tenantName}
+                landlordId={user?.id || ''}
+                propertyId={selectedChat.propertyId}
                 chatRoomId={selectedChat.chatRoomId}
                 isFullPage={false}
                 onClose={() => setSelectedChat(null)}
-            />
+              />
             </div>
           </div>
         </div>
@@ -390,4 +387,4 @@ const TenantMatches = () => {
   );
 };
 
-export default TenantMatches;
+export default LandlordMatches; 

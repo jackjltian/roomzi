@@ -11,6 +11,7 @@ import TenantProfile from "./pages/TenantProfile";
 import TenantMatches from "./pages/TenantMatches";
 import TenantMyHouse from "./pages/TenantMyHouse";
 import LandlordDashboard from "./pages/LandlordDashboard";
+import LandlordMatches from "./pages/LandlordMatches";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
@@ -116,6 +117,7 @@ const App = () => (
                     <Routes>
                       <Route path="/" element={<LandlordDashboard />} />
                       <Route path="profile" element={<LandlordProfile />} />
+                      <Route path="matches" element={<LandlordMatches />} />
                       <Route path="chats" element={<LandlordChats />} />
                       <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
                       <Route path="maintenance-requests" element={<LandlordMaintenanceRequests />} />

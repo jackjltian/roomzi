@@ -56,6 +56,8 @@ interface ChatWindowProps {
   propertyId?: string;
   isFullPage?: boolean;
   onClose?: () => void;
+  tenantLastRead?: string;
+  landlordLastRead?: string;
 }
 
 interface Message {
@@ -93,7 +95,9 @@ export function ChatWindow({
   landlordId,
   propertyId,
   isFullPage = false,
-  onClose
+  onClose,
+  tenantLastRead,
+  landlordLastRead
 }: ChatWindowProps) {
   // Log the current user ID at the very start of rendering
   const { user } = useAuth();
@@ -117,6 +121,8 @@ export function ChatWindow({
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  // Typing indicator state
+  const [otherUserTyping, setOtherUserTyping] = useState<string | null>(null);
 
   // On mount, try to find an existing chat room and fetch messages
   useEffect(() => {
@@ -267,6 +273,28 @@ export function ChatWindow({
       socket.off('chat-deleted');
     };
   }, [socket, user, chatRoomId]);
+
+  // Listen for typing events from the socket
+  useEffect(() => {
+    if (!socket || !chatRoomId) return;
+
+    const handleUserTyping = (data: { userId: string; userName: string }) => {
+      if (data.userId !== user?.id) {
+        setOtherUserTyping(data.userName || 'Someone');
+      }
+    };
+    const handleUserStopTyping = (data: { userId: string }) => {
+      if (data.userId !== user?.id) {
+        setOtherUserTyping(null);
+      }
+    };
+    socket.on('user-typing', handleUserTyping);
+    socket.on('user-stop-typing', handleUserStopTyping);
+    return () => {
+      socket.off('user-typing', handleUserTyping);
+      socket.off('user-stop-typing', handleUserStopTyping);
+    };
+  }, [socket, chatRoomId, user?.id]);
 
   const fetchMessages = async (roomId: string) => {
     try {
@@ -646,8 +674,15 @@ export function ChatWindow({
 
   const messageGroups = groupMessagesByDate(displayedMessages);
 
+  // Determine last seen for the other user
+  const lastSeen = userRole === 'tenant' ? landlordLastRead : tenantLastRead;
+  const lastSeenLabel = lastSeen ? `Last seen: ${new Date(lastSeen).toLocaleString()}` : '';
+
   return (
     <div className={`flex flex-col h-full ${isFullPage ? 'h-screen' : 'h-[600px]'} bg-white overflow-hidden`}>
+      {lastSeenLabel && (
+        <div className="text-xs text-gray-500 text-center py-1">{lastSeenLabel}</div>
+      )}
       {/* Header */}
       <div className="relative flex items-center justify-between px-6 py-4 border-b bg-white">
         <div className="flex items-center gap-4">
@@ -1079,14 +1114,14 @@ export function ChatWindow({
             </div>
           ))}
           {/* Typing Indicator */}
-          {isTyping && (
+          {otherUserTyping && (
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <div className="flex gap-1">
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" />
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-100" />
                 <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce delay-200" />
               </div>
-              <span>{currentLandlordName} is typing...</span>
+              <span>{otherUserTyping} is typing...</span>
             </div>
           )}
         </div>
