@@ -235,9 +235,6 @@ const TenantProfile = () => {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}_${Date.now()}.${fileExt}`;
       const filePath = `profile-images/${fileName}`; // use profile-images bucket
-      // Show preview immediately
-      const localPreview = URL.createObjectURL(file);
-      setProfilePhoto(localPreview);
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('profile-images') // use profile-images bucket
@@ -246,9 +243,13 @@ const TenantProfile = () => {
       // Get public URL
       const { data } = supabase.storage.from('profile-images').getPublicUrl(filePath); // use profile-images bucket
       if (!data?.publicUrl) throw new Error('Failed to get public URL');
-      setProfilePhoto(data.publicUrl);
       // Update user metadata/profile with new photo URL
       await tenantApi.update(user.id, { image_url: data.publicUrl });
+      // Always fetch the latest profile data after update
+      const refreshed = await tenantApi.getById(user.id);
+      if (refreshed.success && refreshed.data) {
+        setProfileData(refreshed.data.data);
+      }
       toast({
         title: 'Profile Photo Updated',
         description: 'Your new photo has been saved.',
@@ -349,8 +350,8 @@ const TenantProfile = () => {
           <div className="flex items-center space-x-6">
             <div className="relative">
               <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
-                {profilePhoto ? (
-                  <img src={profilePhoto} alt="Profile" className="w-24 h-24 object-cover" />
+                {profileData?.image_url ? (
+                  <img src={profileData.image_url} alt="Profile" className="w-24 h-24 object-cover" />
                 ) : (
                   <User className="w-12 h-12 text-gray-500" />
                 )}
