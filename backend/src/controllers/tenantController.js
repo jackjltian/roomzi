@@ -4,28 +4,28 @@ import { successResponse, errorResponse } from "../utils/response.js";
 // Helper function to convert BigInt to string for JSON serialization
 const convertBigIntToString = (obj) => {
   if (obj === null || obj === undefined) return obj;
-  
-  if (typeof obj === 'bigint') {
+
+  if (typeof obj === "bigint") {
     return obj.toString();
   }
-  
+
   // Handle Date objects
   if (obj instanceof Date) {
     return obj.toISOString();
   }
-  
+
   if (Array.isArray(obj)) {
     return obj.map(convertBigIntToString);
   }
-  
-  if (typeof obj === 'object') {
+
+  if (typeof obj === "object") {
     const converted = {};
     for (const [key, value] of Object.entries(obj)) {
       converted[key] = convertBigIntToString(value);
     }
     return converted;
   }
-  
+
   return obj;
 };
 
@@ -129,7 +129,10 @@ export const createTenant = async (req, res) => {
     res
       .status(201)
       .json(
-        successResponse(responseData, "Tenant profile created/updated successfully")
+        successResponse(
+          responseData,
+          "Tenant profile created/updated successfully"
+        )
       );
   } catch (error) {
     console.error("Error creating/updating tenant:", error);
@@ -143,6 +146,7 @@ export const updateTenant = async (req, res) => {
     const { id } = req.params;
     const { full_name, email, phone, image_url, address } = req.body;
 
+    // Update tenant profile
     const tenant = await prisma.tenant_profiles.update({
       where: { id },
       data: {
@@ -154,6 +158,24 @@ export const updateTenant = async (req, res) => {
         updated_at: new Date(),
       },
     });
+
+    // Real-time sync: update landlord profile if exists
+    const landlordProfile = await prisma.landlord_profiles.findUnique({
+      where: { id },
+    });
+    if (landlordProfile) {
+      await prisma.landlord_profiles.update({
+        where: { id },
+        data: {
+          ...(full_name && { full_name }),
+          ...(email && { email }),
+          ...(phone !== undefined && { phone }),
+          ...(image_url !== undefined && { image_url }),
+          ...(address !== undefined && { address }),
+          updated_at: new Date(),
+        },
+      });
+    }
 
     // Convert BigInt to string for JSON serialization
     const responseData = convertBigIntToString(tenant);
@@ -198,13 +220,13 @@ export const deleteTenant = async (req, res) => {
 export const getTenantListings = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     console.log("Fetching listings for tenant ID:", id);
 
     const listings = await prisma.listings.findMany({
-      where: { 
+      where: {
         tenant_id: id,
-        available: false // Only show occupied properties
+        available: false, // Only show occupied properties
       },
       orderBy: { created_at: "desc" },
     });
@@ -212,7 +234,7 @@ export const getTenantListings = async (req, res) => {
     console.log("Found listings:", listings.length, "for tenant:", id);
 
     // Convert BigInt to string for JSON serialization
-    const responseData = listings.map(listing => ({
+    const responseData = listings.map((listing) => ({
       ...listing,
       id: listing.id.toString(),
     }));

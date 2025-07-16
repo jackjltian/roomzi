@@ -23,6 +23,7 @@ interface TenantProfileData {
   address?: string | null;
   created_at?: string;
   updated_at?: string;
+  documents?: string[];
 }
 
 const TenantProfile = () => {
@@ -52,6 +53,7 @@ const TenantProfile = () => {
     phone: '',
     address: '',
   });
+  const [documents, setDocuments] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -69,6 +71,7 @@ const TenantProfile = () => {
             phone: result.data.data.phone || '',
             address: result.data.data.address || '',
           });
+          setDocuments(result.data.data.documents || []);
         } else {
           // Create profile if not found
           const createResult = await tenantApi.create(user.id, user.email || '');
@@ -80,6 +83,7 @@ const TenantProfile = () => {
               phone: '',
               address: '',
             });
+            setDocuments([]);
             setEditMode(true);
           }
         }
@@ -173,18 +177,23 @@ const TenantProfile = () => {
         phone: formData.phone || null,
         address: formData.address || null,
         image_url: profilePhoto,
+        documents,
       });
 
       if (updateResult.success) {
-        setProfileData(prev => prev ? {
-          ...prev,
-          ...formData,
-          phone: formData.phone || null,
-          address: formData.address || null,
-        } : null);
-
+        // Always fetch the latest profile data after update
+        const refreshed = await tenantApi.getById(user.id);
+        if (refreshed.success && refreshed.data) {
+          setProfileData(refreshed.data.data);
+          setFormData({
+            full_name: refreshed.data.data.full_name || '',
+            email: refreshed.data.data.email || '',
+            phone: refreshed.data.data.phone || '',
+            address: refreshed.data.data.address || '',
+          });
+          setDocuments(refreshed.data.data.documents || []);
+        }
         setEditMode(false);
-
         window.dispatchEvent(new CustomEvent('tenantProfileUpdated', {
           detail: {
             fullName: formData.full_name,
@@ -194,9 +203,7 @@ const TenantProfile = () => {
             profilePhoto,
           }
         }));
-
         navigate('/tenant', { state: { profileUpdated: true } });
-
         toast({
           title: "Success",
           description: "Profile updated successfully!",
@@ -227,29 +234,21 @@ const TenantProfile = () => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}_${Date.now()}.${fileExt}`;
-      const filePath = `profile-photos/${fileName}`;
+      const filePath = `profile-images/${fileName}`; // use profile-images bucket
       // Show preview immediately
       const localPreview = URL.createObjectURL(file);
       setProfilePhoto(localPreview);
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
-        .from('profile-photos')
+        .from('profile-images') // use profile-images bucket
         .upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
       // Get public URL
-      const { data } = supabase.storage.from('profile-photos').getPublicUrl(filePath);
+      const { data } = supabase.storage.from('profile-images').getPublicUrl(filePath); // use profile-images bucket
       if (!data?.publicUrl) throw new Error('Failed to get public URL');
       setProfilePhoto(data.publicUrl);
       // Update user metadata/profile with new photo URL
-      const response = await apiFetch(`/api/tenant/update-profile`, {
-        method: 'POST',
-        body: JSON.stringify({
-          id: user.id,
-          profilePhoto: data.publicUrl,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!response.success) throw new Error(response.message || 'Failed to update profile photo');
+      await tenantApi.update(user.id, { image_url: data.publicUrl });
       toast({
         title: 'Profile Photo Updated',
         description: 'Your new photo has been saved.',
@@ -264,7 +263,7 @@ const TenantProfile = () => {
     } finally {
       setUploadingPhoto(false);
     }
-  }; // <-- added missing closing brace here
+  };
 
   const handleCancelEdit = () => {
     if (profileData) {
@@ -276,6 +275,32 @@ const TenantProfile = () => {
       });
     }
     setEditMode(false);
+  };
+
+  // Document upload handler for tenant (mirrors landlord)
+  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>, documentType: string) => {
+    const file = event.target.files?.[0];
+    if (!file || !user?.id) return;
+    try {
+      const documentPath = await documentUtils.uploadDocument(file, user.id, documentType);
+      const newDocuments = [...documents, documentPath];
+      setDocuments(newDocuments);
+      // Optionally, update profile immediately
+      await tenantApi.update(user.id, { documents: newDocuments });
+      toast({
+        title: "Success",
+        description: `${documentType.replace('-', ' ')} document uploaded successfully!`,
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Upload Failed",
+        description: (error as Error)?.message || "Failed to upload document. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      event.target.value = '';
+    }
   };
 
   const tabs = [

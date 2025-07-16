@@ -5,28 +5,28 @@ import { supabase } from "../config/supabase.js";
 // Helper function to convert BigInt to string for JSON serialization
 const convertBigIntToString = (obj) => {
   if (obj === null || obj === undefined) return obj;
-  
-  if (typeof obj === 'bigint') {
+
+  if (typeof obj === "bigint") {
     return obj.toString();
   }
-  
+
   // Handle Date objects
   if (obj instanceof Date) {
     return obj.toISOString();
   }
-  
+
   if (Array.isArray(obj)) {
     return obj.map(convertBigIntToString);
   }
-  
-  if (typeof obj === 'object') {
+
+  if (typeof obj === "object") {
     const converted = {};
     for (const [key, value] of Object.entries(obj)) {
       converted[key] = convertBigIntToString(value);
     }
     return converted;
   }
-  
+
   return obj;
 };
 
@@ -116,6 +116,7 @@ export const updateLandlord = async (req, res) => {
     const { id } = req.params;
     const { full_name, email, phone, image_url, address, documents } = req.body;
 
+    // Update landlord profile
     const landlord = await prisma.landlord_profiles.update({
       where: { id },
       data: {
@@ -128,6 +129,24 @@ export const updateLandlord = async (req, res) => {
         updated_at: new Date(),
       },
     });
+
+    // Real-time sync: update tenant profile if exists
+    const tenantProfile = await prisma.tenant_profiles.findUnique({
+      where: { id },
+    });
+    if (tenantProfile) {
+      await prisma.tenant_profiles.update({
+        where: { id },
+        data: {
+          ...(full_name && { full_name }),
+          ...(email && { email }),
+          ...(phone !== undefined && { phone }),
+          ...(image_url !== undefined && { image_url }),
+          ...(address !== undefined && { address }),
+          updated_at: new Date(),
+        },
+      });
+    }
 
     res.json(successResponse(landlord, "Landlord updated successfully"));
   } catch (error) {
@@ -178,7 +197,9 @@ export const getLandlordListings = async (req, res) => {
     });
     // Convert BigInt to string for JSON serialization
     const responseData = convertBigIntToString(listings);
-    res.json(successResponse(responseData, "Landlord listings retrieved successfully"));
+    res.json(
+      successResponse(responseData, "Landlord listings retrieved successfully")
+    );
   } catch (error) {
     console.error("Error fetching landlord listings:", error);
     res.status(500).json(errorResponse(error));
@@ -280,95 +301,94 @@ export const createListing = async (req, res) => {
     });
   } catch (err) {
     console.error("Error creating listing:", err);
-    
+
     // Provide more specific error messages
-    if (err.code === 'P2002') {
+    if (err.code === "P2002") {
       return res.status(400).json({
         error: "A listing with this title already exists.",
-        details: err.message
+        details: err.message,
       });
     }
-    
-    if (err.code === 'P2003') {
+
+    if (err.code === "P2003") {
       return res.status(400).json({
         error: "Invalid landlord ID or database constraint violation.",
-        details: err.message
+        details: err.message,
       });
     }
-    
-    if (err.code === 'P2025') {
+
+    if (err.code === "P2025") {
       return res.status(404).json({
         error: "Landlord profile not found.",
-        details: err.message
+        details: err.message,
       });
     }
-    
+
     res.status(500).json({
       error: "An error occurred while creating the listing.",
       details: err.message,
-      code: err.code
+      code: err.code,
     });
   }
 };
 
 export const getListings = async (req, res) => {
-    try {
-        const { id } = req.params;
+  try {
+    const { id } = req.params;
 
-        const listings = await prisma.listings.findMany({
-            where: { landlord_id: id },
-            orderBy: { created_at: "desc" },
-        });
-        
-        // Convert BigInt to string for JSON serialization
-        const responseData = convertBigIntToString(listings);
-        res.status(200).json(responseData);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({
-            error: "An error occurred while getting the listings.",
-        });
-    }
+    const listings = await prisma.listings.findMany({
+      where: { landlord_id: id },
+      orderBy: { created_at: "desc" },
+    });
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(listings);
+    res.status(200).json(responseData);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "An error occurred while getting the listings.",
+    });
+  }
 };
 
-
 export const getPayments = async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log('getPayments called with id:', id, 'type:', typeof id);
-        
-        // Validate that id is a valid number
-        if (!id || isNaN(parseInt(id))) {
-            console.log('Invalid ID provided:', id);
-            return res.status(400).json({
-                error: 'Invalid listing ID provided.'
-            });
-        }
+  try {
+    const { id } = req.params;
+    console.log("getPayments called with id:", id, "type:", typeof id);
 
-        const listingId = BigInt(id);
-        console.log('Converted listingId to BigInt:', listingId.toString());
-
-        // First, let's check if the table exists and has any data
-        const allPayments = await prisma.payment_requests.findMany();
-        console.log('Total payments in database:', allPayments.length);
-
-        const payments = await prisma.payment_requests.findMany({
-            where: { listingId: listingId },
-            orderBy: { date: "desc" },
-        });
-        
-        console.log('Found payments:', payments.length);
-        
-        // Convert BigInt to string for JSON serialization
-        const responseData = convertBigIntToString(payments);
-        console.log('Response data prepared, sending response');
-        res.status(200).json(responseData);
-    } catch (err) {
-        console.error('Error in getPayments:', err);
-        console.error('Error stack:', err.stack);
-        res.status(500).json({
-            error: 'An error occurred while getting the payments.',
-            details: err.message
-        });
+    // Validate that id is a valid number
+    if (!id || isNaN(parseInt(id))) {
+      console.log("Invalid ID provided:", id);
+      return res.status(400).json({
+        error: "Invalid listing ID provided.",
+      });
     }
-}
+
+    const listingId = BigInt(id);
+    console.log("Converted listingId to BigInt:", listingId.toString());
+
+    // First, let's check if the table exists and has any data
+    const allPayments = await prisma.payment_requests.findMany();
+    console.log("Total payments in database:", allPayments.length);
+
+    const payments = await prisma.payment_requests.findMany({
+      where: { listingId: listingId },
+      orderBy: { date: "desc" },
+    });
+
+    console.log("Found payments:", payments.length);
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(payments);
+    console.log("Response data prepared, sending response");
+    res.status(200).json(responseData);
+  } catch (err) {
+    console.error("Error in getPayments:", err);
+    console.error("Error stack:", err.stack);
+    res.status(500).json({
+      error: "An error occurred while getting the payments.",
+      details: err.message,
+    });
+  }
+};

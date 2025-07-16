@@ -206,17 +206,27 @@ const LandlordProfile = () => {
       // Upload image using utility function
       const imageUrl = await imageUtils.uploadProfileImage(file, user.id);
 
-      // Update profile with new image URL
+      // Update profile with all shared fields to trigger backend sync
       const updateResult = await landlordApi.update(user.id, {
+        full_name: formData.full_name,
+        email: formData.email,
+        phone: formData.phone || null,
+        address: formData.address || null,
         image_url: imageUrl
       });
 
       if (updateResult.success) {
-        setProfileData(prev => prev ? {
-          ...prev,
-          image_url: imageUrl
-        } : null);
-        
+        // Always fetch the latest profile data after update
+        const refreshed = await landlordApi.getById(user.id);
+        if (refreshed.success && refreshed.data) {
+          setProfileData(refreshed.data.data);
+          setFormData({
+            full_name: refreshed.data.data.full_name || '',
+            email: refreshed.data.data.email || '',
+            phone: refreshed.data.data.phone || '',
+            address: refreshed.data.data.address || '',
+          });
+        }
         toast({
           title: "Success",
           description: "Profile picture updated successfully!",
@@ -345,15 +355,18 @@ const LandlordProfile = () => {
       });
 
       if (updateResult.success) {
-        setProfileData(prev => prev ? {
-          ...prev,
-          ...formData,
-          phone: formData.phone || null,
-          address: formData.address || null,
-        } : null);
-        
+        // Always fetch the latest profile data after update
+        const refreshed = await landlordApi.getById(user.id);
+        if (refreshed.success && refreshed.data) {
+          setProfileData(refreshed.data.data);
+          setFormData({
+            full_name: refreshed.data.data.full_name || '',
+            email: refreshed.data.data.email || '',
+            phone: refreshed.data.data.phone || '',
+            address: refreshed.data.data.address || '',
+          });
+        }
         setEditMode(false);
-        
         toast({
           title: "Success",
           description: "Profile updated successfully!",
