@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2, Save, X } from 'lucide-react';
+import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2, Save, X, Download, Trash2 } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { landlordApi, ApiError, apiFetch, getApiBaseUrl, tenantApi } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
 import { supabase } from '@/lib/supabaseClient';
+import { documentUtils } from '@/utils/api';
 
 interface TenantProfileData {
   id: string;
@@ -23,7 +24,6 @@ interface TenantProfileData {
   address?: string | null;
   created_at?: string;
   updated_at?: string;
-  documents?: string[];
 }
 
 const TenantProfile = () => {
@@ -53,7 +53,6 @@ const TenantProfile = () => {
     phone: '',
     address: '',
   });
-  const [documents, setDocuments] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -71,19 +70,17 @@ const TenantProfile = () => {
             phone: result.data.data.phone || '',
             address: result.data.data.address || '',
           });
-          setDocuments(result.data.data.documents || []);
         } else {
-          // Create profile if not found
-          const createResult = await tenantApi.create(user.id, user.email || '');
+          // Create profile if not found with user's auth data
+          const createResult = await tenantApi.create(user.id, user.email || '', user.user_metadata);
           if (createResult.success && createResult.data) {
             setProfileData(createResult.data.data);
             setFormData({
-              full_name: user.user_metadata?.full_name || '',
-              email: user.email || '',
-              phone: '',
-              address: '',
+              full_name: createResult.data.data.full_name || '',
+              email: createResult.data.data.email || '',
+              phone: createResult.data.data.phone || '',
+              address: createResult.data.data.address || '',
             });
-            setDocuments([]);
             setEditMode(true);
           }
         }
@@ -114,7 +111,7 @@ const TenantProfile = () => {
     setSwitching(true);
 
     try {
-      const profileResult = await landlordApi.create(user.id, user.email || '');
+      const profileResult = await landlordApi.create(user.id, user.email || '', user.user_metadata);
 
       if (profileResult.success) {
         if (profileResult.alreadyExists) {
@@ -177,7 +174,6 @@ const TenantProfile = () => {
         phone: formData.phone || null,
         address: formData.address || null,
         image_url: profilePhoto,
-        documents,
       });
 
       if (updateResult.success) {
@@ -191,7 +187,6 @@ const TenantProfile = () => {
             phone: refreshed.data.data.phone || '',
             address: refreshed.data.data.address || '',
           });
-          setDocuments(refreshed.data.data.documents || []);
         }
         setEditMode(false);
         window.dispatchEvent(new CustomEvent('tenantProfileUpdated', {
@@ -278,35 +273,8 @@ const TenantProfile = () => {
     setEditMode(false);
   };
 
-  // Document upload handler for tenant (mirrors landlord)
-  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>, documentType: string) => {
-    const file = event.target.files?.[0];
-    if (!file || !user?.id) return;
-    try {
-      const documentPath = await documentUtils.uploadDocument(file, user.id, documentType);
-      const newDocuments = [...documents, documentPath];
-      setDocuments(newDocuments);
-      // Optionally, update profile immediately
-      await tenantApi.update(user.id, { documents: newDocuments });
-      toast({
-        title: "Success",
-        description: `${documentType.replace('-', ' ')} document uploaded successfully!`,
-        variant: "default",
-      });
-    } catch (error) {
-      toast({
-        title: "Upload Failed",
-        description: (error as Error)?.message || "Failed to upload document. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      event.target.value = '';
-    }
-  };
-
   const tabs = [
     { id: 'info', label: 'Personal Info', icon: User },
-    { id: 'docs', label: 'Documents', icon: FileText },
     { id: 'credit', label: 'Credit Score', icon: CreditCard },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -508,7 +476,18 @@ const TenantProfile = () => {
             </div>
           </Card>
         )}
-        {/* TODO: add content for other tabs */}
+        {activeTab === 'credit' && (
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Credit Score</h3>
+            <p>Your credit score is not yet available. Please check back later.</p>
+          </Card>
+        )}
+        {activeTab === 'settings' && (
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Settings</h3>
+            <p>No settings available for tenants yet.</p>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -60,7 +60,7 @@ export interface ProfileData {
 }
 
 export interface LandlordProfileData extends ProfileData {
-  documents?: string[];
+  documents?: Array<{ path: string; displayName: string }>;
 }
 
 export interface ApiResponse<T = any> {
@@ -175,26 +175,38 @@ export const cleanupCache = () => {
 setInterval(cleanupCache, 300000);
 
 // Profile creation helper
-const createProfileData = (userId: string, email: string): ProfileData => {
+const createProfileData = (userId: string, email: string, userMetadata?: any): ProfileData => {
+  // Use actual user data from auth if available
+  const fullName = userMetadata?.full_name || 
+                   userMetadata?.name || 
+                   userMetadata?.display_name || 
+                   email.split('@')[0];
+  
   return {
     id: userId,
-    full_name: email.split('@')[0],
+    full_name: fullName,
     email: email,
-    phone: null,
-    image_url: null,
-    address: null,
+    phone: userMetadata?.phone || null,
+    image_url: userMetadata?.avatar_url || userMetadata?.picture || null,
+    address: userMetadata?.address || null,
   };
 };
 
 // Profile creation helper for landlords
-const createLandlordProfileData = (userId: string, email: string): LandlordProfileData => {
+const createLandlordProfileData = (userId: string, email: string, userMetadata?: any): LandlordProfileData => {
+  // Use actual user data from auth if available
+  const fullName = userMetadata?.full_name || 
+                   userMetadata?.name || 
+                   userMetadata?.display_name || 
+                   email.split('@')[0];
+  
   return {
     id: userId,
-    full_name: email.split('@')[0],
+    full_name: fullName,
     email: email,
-    phone: null,
-    image_url: null,
-    address: null,
+    phone: userMetadata?.phone || null,
+    image_url: userMetadata?.avatar_url || userMetadata?.picture || null,
+    address: userMetadata?.address || null,
     documents: [],
   };
 };
@@ -255,10 +267,10 @@ export const profileSyncUtils = {
 
 // Tenant API Functions
 export const tenantApi = {
-  create: async (userId: string, email: string): Promise<ApiResponse> => {
+  create: async (userId: string, email: string, userMetadata?: any): Promise<ApiResponse> => {
     try {
       const landlordData = await profileSyncUtils.getOppositeProfileData(userId, 'tenant');
-      const profileData = createProfileData(userId, email);
+      const profileData = createProfileData(userId, email, userMetadata);
 
       if (landlordData) {
         Object.assign(profileData, {
@@ -341,10 +353,10 @@ export const tenantApi = {
 
 // Landlord API Functions
 export const landlordApi = {
-  create: async (userId: string, email: string): Promise<ApiResponse> => {
+  create: async (userId: string, email: string, userMetadata?: any): Promise<ApiResponse> => {
     try {
       const tenantData = await profileSyncUtils.getOppositeProfileData(userId, 'landlord');
-      const profileData = createLandlordProfileData(userId, email);
+      const profileData = createLandlordProfileData(userId, email, userMetadata);
 
       if (tenantData) {
         Object.assign(profileData, {
@@ -428,11 +440,11 @@ export const landlordApi = {
 
 // Profile utility functions
 export const profileUtils = {
-  createForRole: async (role: 'tenant' | 'landlord', userId: string, email: string): Promise<ApiResponse> => {
+  createForRole: async (role: 'tenant' | 'landlord', userId: string, email: string, userMetadata?: any): Promise<ApiResponse> => {
     if (role === 'tenant') {
-      return tenantApi.create(userId, email);
+      return tenantApi.create(userId, email, userMetadata);
     } else if (role === 'landlord') {
-      return landlordApi.create(userId, email);
+      return landlordApi.create(userId, email, userMetadata);
     } else {
       throw new Error(`Invalid role: ${role}`);
     }

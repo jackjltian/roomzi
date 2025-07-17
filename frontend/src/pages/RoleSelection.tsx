@@ -78,22 +78,13 @@ const RoleSelection = () => {
       console.log('User:', { id: user.id, email: user.email });
       console.log('Selected role:', role);
       
-      // Step 1: Set the role in context and localStorage
-      setUserRole(role);
-      console.log('✅ Role set in context and localStorage');
-      
-      // Step 2: Update Supabase user metadata with the selected role
-      try {
-        await updateUserMetadata(role);
-        console.log('✅ Supabase user metadata updated successfully');
-      } catch (updateError) {
-        console.error('Error updating user metadata:', updateError);
-        // Don't fail the entire process for metadata errors
-      }
+      // Step 1: Set the role in context, localStorage, and Supabase metadata
+      await setUserRole(role);
+      console.log('✅ Role set in context, localStorage, and Supabase metadata');
       
       // Step 3: Create the user profile using centralized API
       console.log('Creating user profile...');
-      const profileResult = await profileUtils.createForRole(role, user.id, user.email);
+      const profileResult = await profileUtils.createForRole(role, user.id, user.email, user.user_metadata);
       
       if (profileResult.success) {
         if (profileResult.alreadyExists) {

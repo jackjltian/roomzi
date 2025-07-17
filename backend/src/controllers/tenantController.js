@@ -29,6 +29,25 @@ const convertBigIntToString = (obj) => {
   return obj;
 };
 
+function normalizeDocuments(docs) {
+  if (!Array.isArray(docs)) return [];
+  return docs
+    .map((doc) => {
+      if (typeof doc === "string") {
+        return { path: doc, displayName: doc.split("/").pop() || "Document" };
+      }
+      if (doc && typeof doc === "object" && doc.path) {
+        return {
+          path: doc.path,
+          displayName:
+            doc.displayName || doc.path.split("/").pop() || "Document",
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
 // Get all tenants
 export const getTenants = async (req, res) => {
   try {
@@ -101,12 +120,10 @@ export const getTenantById = async (req, res) => {
 export const createTenant = async (req, res) => {
   try {
     const { id, full_name, email, phone, image_url, address } = req.body;
-
     // Use upsert to handle both create and update scenarios
     const tenant = await prisma.tenant_profiles.upsert({
       where: { id },
       update: {
-        // Update existing profile with new data if provided
         ...(full_name && { full_name }),
         ...(email && { email }),
         ...(phone !== undefined && { phone }),
@@ -116,15 +133,13 @@ export const createTenant = async (req, res) => {
       },
       create: {
         id,
-        full_name: full_name || email.split("@")[0], // Use email prefix as fallback
+        full_name: full_name || email.split("@")[0],
         email,
         phone,
         image_url,
         address,
       },
     });
-
-    // Convert BigInt to string for JSON serialization
     const responseData = convertBigIntToString(tenant);
     res
       .status(201)
@@ -145,20 +160,19 @@ export const updateTenant = async (req, res) => {
   try {
     const { id } = req.params;
     const { full_name, email, phone, image_url, address } = req.body;
-
     // Update tenant profile
+    const updateData = {
+      ...(full_name && { full_name }),
+      ...(email && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(image_url !== undefined && { image_url }),
+      ...(address !== undefined && { address }),
+      updated_at: new Date(),
+    };
     const tenant = await prisma.tenant_profiles.update({
       where: { id },
-      data: {
-        ...(full_name && { full_name }),
-        ...(email && { email }),
-        ...(phone !== undefined && { phone }),
-        ...(image_url !== undefined && { image_url }),
-        ...(address !== undefined && { address }),
-        updated_at: new Date(),
-      },
+      data: updateData,
     });
-
     // Real-time sync: update landlord profile if exists
     const landlordProfile = await prisma.landlord_profiles.findUnique({
       where: { id },
@@ -176,19 +190,15 @@ export const updateTenant = async (req, res) => {
         },
       });
     }
-
-    // Convert BigInt to string for JSON serialization
     const responseData = convertBigIntToString(tenant);
     res.json(successResponse(responseData, "Tenant updated successfully"));
   } catch (error) {
     console.error("Error updating tenant:", error);
-
     if (error.code === "P2025") {
       return res
         .status(404)
         .json(errorResponse(new Error("Tenant not found"), 404));
     }
-
     res.status(500).json(errorResponse(error));
   }
 };

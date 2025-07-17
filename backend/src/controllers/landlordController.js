@@ -30,6 +30,25 @@ const convertBigIntToString = (obj) => {
   return obj;
 };
 
+function normalizeDocuments(docs) {
+  if (!Array.isArray(docs)) return [];
+  return docs
+    .map((doc) => {
+      if (typeof doc === "string") {
+        return { path: doc, displayName: doc.split("/").pop() || "Document" };
+      }
+      if (doc && typeof doc === "object" && doc.path) {
+        return {
+          path: doc.path,
+          displayName:
+            doc.displayName || doc.path.split("/").pop() || "Document",
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
 // Get all landlords
 export const getLandlords = async (req, res) => {
   try {
@@ -82,7 +101,9 @@ export const createLandlord = async (req, res) => {
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
-        ...(documents !== undefined && { documents }),
+        ...(documents !== undefined && {
+          documents: { set: normalizeDocuments(documents) },
+        }), // expects array of objects
         updated_at: new Date(),
       },
       create: {
@@ -92,7 +113,7 @@ export const createLandlord = async (req, res) => {
         phone,
         image_url,
         address,
-        documents: documents || [],
+        documents: { set: normalizeDocuments(documents || []) }, // expects array of objects
       },
     });
 
@@ -116,18 +137,32 @@ export const updateLandlord = async (req, res) => {
     const { id } = req.params;
     const { full_name, email, phone, image_url, address, documents } = req.body;
 
+    console.log("Updating landlord profile:", { id, documents });
+
     // Update landlord profile
+    const updateData = {
+      ...(full_name && { full_name }),
+      ...(email && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(image_url !== undefined && { image_url }),
+      ...(address !== undefined && { address }),
+      updated_at: new Date(),
+    };
+
+    // Handle documents separately to avoid issues with normalization
+    if (documents !== undefined) {
+      console.log("Normalizing documents:", documents);
+      const normalizedDocuments = normalizeDocuments(documents);
+      console.log("Normalized documents:", normalizedDocuments);
+      // Use set operation for JSON array to avoid Prisma validation issues
+      updateData.documents = {
+        set: normalizedDocuments,
+      };
+    }
+
     const landlord = await prisma.landlord_profiles.update({
       where: { id },
-      data: {
-        ...(full_name && { full_name }),
-        ...(email && { email }),
-        ...(phone !== undefined && { phone }),
-        ...(image_url !== undefined && { image_url }),
-        ...(address !== undefined && { address }),
-        ...(documents !== undefined && { documents }),
-        updated_at: new Date(),
-      },
+      data: updateData,
     });
 
     // Real-time sync: update tenant profile if exists

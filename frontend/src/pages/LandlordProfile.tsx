@@ -19,7 +19,7 @@ interface LandlordProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
-  documents?: string[];
+  documents?: Array<{ path: string; displayName: string }>;
   created_at?: string;
   updated_at?: string;
 }
@@ -43,7 +43,10 @@ const LandlordProfile = () => {
     phone: '',
     address: '',
   });
-  const [documents, setDocuments] = useState<string[]>([]);
+  const [documents, setDocuments] = useState<{ path: string; displayName: string }[]>([]);
+  // Add state for document upload
+  const [newDocFile, setNewDocFile] = useState<File | null>(null);
+  const [newDocName, setNewDocName] = useState("");
 
   // Fetch landlord profile data
   useEffect(() => {
@@ -64,16 +67,16 @@ const LandlordProfile = () => {
             address: result.data.data.address || '',
           });
         } else {
-          // Profile doesn't exist, create a basic one
-          const createResult = await landlordApi.create(user.id, user.email || '');
+          // Profile doesn't exist, create a basic one with user's auth data
+          const createResult = await landlordApi.create(user.id, user.email || '', user.user_metadata);
           if (createResult.success && createResult.data) {
             setProfileData(createResult.data.data);
             setDocuments(createResult.data.data.documents || []);
             setFormData({
-              full_name: user.user_metadata?.full_name || '',
-              email: user.email || '',
-              phone: '',
-              address: '',
+              full_name: createResult.data.data.full_name || '',
+              email: createResult.data.data.email || '',
+              phone: createResult.data.data.phone || '',
+              address: createResult.data.data.address || '',
             });
             setEditMode(true); // Automatically enter edit mode for new profiles
           }
@@ -137,7 +140,7 @@ const LandlordProfile = () => {
       console.log('Switching to tenant role...');
       
       // Step 1: Create tenant profile if needed using centralized API
-      const profileResult = await tenantApi.create(user.id, user.email || '');
+      const profileResult = await tenantApi.create(user.id, user.email || '', user.user_metadata);
       
       if (profileResult.success) {
         if (profileResult.alreadyExists) {
@@ -246,98 +249,60 @@ const LandlordProfile = () => {
     }
   };
 
-  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>, documentType: string) => {
-    const file = event.target.files?.[0];
-    if (!file || !user?.id) return;
-
+  // Update handleDocumentUpload to use display name
+  const handleDocumentUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newDocFile || !user?.id || !newDocName.trim()) return;
     setUploadingDocument(true);
-    
     try {
-      // Upload document using utility function
-      const documentPath = await documentUtils.uploadDocument(file, user.id, documentType);
-
-      // Update profile with new document
-      const newDocuments = [...documents, documentPath];
-      const updateResult = await landlordApi.update(user.id, {
-        documents: newDocuments
-      });
-
+      const documentPath = await documentUtils.uploadDocument(newDocFile, user.id, newDocName);
+      const newDocObj = { path: documentPath, displayName: newDocName };
+      const newDocuments = [...(profileData?.documents || []), newDocObj];
+      console.log('Sending documents to API:', newDocuments);
+      const updateResult = await landlordApi.update(user.id, { documents: newDocuments });
       if (updateResult.success) {
         setDocuments(newDocuments);
-        setProfileData(prev => prev ? {
-          ...prev,
-          documents: newDocuments
-        } : null);
-        
-        toast({
-          title: "Success",
-          description: `${documentType.replace('-', ' ')} document uploaded successfully!`,
-          variant: "default",
-        });
+        setProfileData(prev => prev ? { ...prev, documents: newDocuments } : null);
+        setNewDocFile(null);
+        setNewDocName("");
+        toast({ title: "Success", description: `Document uploaded successfully!`, variant: "default" });
       }
     } catch (error) {
-      console.error('Error uploading document:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to upload document. Please try again.";
-      toast({
-        title: "Upload Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast({ title: "Upload Failed", description: (error as Error)?.message || "Failed to upload document.", variant: "destructive" });
     } finally {
       setUploadingDocument(false);
-      // Reset the input
-      event.target.value = '';
     }
   };
 
-  const handleDocumentDelete = async (documentPath: string) => {
+  // Update handleDocumentDelete to use document object
+  const handleDocumentDelete = async (docObj: { path: string; displayName: string }) => {
     if (!user?.id) return;
-
     try {
-      // Delete from storage
-      await documentUtils.deleteDocument(documentPath);
-
-      // Update profile
-      const newDocuments = documents.filter(doc => doc !== documentPath);
-      const updateResult = await landlordApi.update(user.id, {
-        documents: newDocuments
-      });
-
+      await documentUtils.deleteDocument(docObj.path);
+      const newDocuments = (profileData?.documents || []).filter(d => d.path !== docObj.path);
+      const updateResult = await landlordApi.update(user.id, { documents: newDocuments });
       if (updateResult.success) {
         setDocuments(newDocuments);
-        setProfileData(prev => prev ? {
-          ...prev,
-          documents: newDocuments
-        } : null);
-        
-        toast({
-          title: "Success",
-          description: "Document deleted successfully!",
-          variant: "default",
-        });
+        setProfileData(prev => prev ? { ...prev, documents: newDocuments } : null);
+        toast({ title: "Success", description: "Document deleted successfully!", variant: "default" });
       }
     } catch (error) {
-      console.error('Error deleting document:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to delete document. Please try again.";
-      toast({
-        title: "Delete Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast({ title: "Delete Failed", description: (error as Error)?.message || "Failed to delete document.", variant: "destructive" });
     }
   };
 
-  const handleDocumentView = async (documentPath: string) => {
+  // Update handleDocumentView to use document object
+  const handleDocumentView = async (docObj: { path: string; displayName: string }) => {
     try {
-      const signedUrl = await documentUtils.getDocumentUrl(documentPath);
-      window.open(signedUrl, '_blank');
+      const { supabase } = await import('@/lib/supabaseClient');
+      const { data } = await supabase.storage.from('documents').createSignedUrl(docObj.path, 60);
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      } else {
+        throw new Error('Failed to get signed URL');
+      }
     } catch (error) {
-      console.error('Error viewing document:', error);
-      toast({
-        title: "View Failed",
-        description: "Failed to open document. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "View Failed", description: "Failed to open document. Please try again.", variant: "destructive" });
     }
   };
 
@@ -626,236 +591,25 @@ const LandlordProfile = () => {
 
         {activeTab === 'docs' && (
           <Card className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-semibold">Verification Documents</h3>
-              <Badge variant="outline" className="text-sm">
-                {documents.length} document{documents.length !== 1 ? 's' : ''} uploaded
-              </Badge>
-            </div>
-            
-            {/* Document Upload Sections */}
-            <div className="space-y-6">
-              {/* Identity Proof Section */}
-              <div>
-                <h4 className="text-md font-medium mb-3 text-gray-900">Identity Proof</h4>
-                <div className="space-y-3">
-                  {documents.filter(doc => documentUtils.parseDocumentPath(doc).documentType === 'identity').map((doc, index) => {
-                    const { originalName } = documentUtils.parseDocumentPath(doc);
-                    return (
-                      <div key={index} className="document-item">
-                        <div className="document-item-info">
-                          <FileText className="w-5 h-5 text-blue-600" />
-                          <span className="document-item-name">{originalName}</span>
-                        </div>
-                        <div className="document-actions">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentView(doc)}
-                            className="p-2"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentDelete(doc)}
-                            className="p-2 text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  <div className="document-upload-zone">
-                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600 mb-3 text-sm">
-                      Upload government-issued ID (Driver's License, Passport, etc.)
-                    </p>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                      onChange={(e) => handleDocumentUpload(e, 'identity')}
-                      className="hidden"
-                      id="identity-upload"
-                      disabled={uploadingDocument}
-                    />
-                    <label htmlFor="identity-upload">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        disabled={uploadingDocument}
-                        asChild
-                      >
-                        <span>
-                          {uploadingDocument ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <Plus className="w-4 h-4 mr-2" />
-                          )}
-                          {uploadingDocument ? 'Uploading...' : 'Add Identity Document'}
-                        </span>
-                      </Button>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Property Ownership Section */}
-              <div>
-                <h4 className="text-md font-medium mb-3 text-gray-900">Property Ownership</h4>
-                <div className="space-y-3">
-                  {documents.filter(doc => documentUtils.parseDocumentPath(doc).documentType === 'property').map((doc, index) => {
-                    const { originalName } = documentUtils.parseDocumentPath(doc);
-                    return (
-                      <div key={index} className="document-item">
-                        <div className="document-item-info">
-                          <FileText className="w-5 h-5 text-green-600" />
-                          <span className="document-item-name">{originalName}</span>
-                        </div>
-                        <div className="document-actions">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentView(doc)}
-                            className="p-2"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentDelete(doc)}
-                            className="p-2 text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  <div className="document-upload-zone">
-                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600 mb-3 text-sm">
-                      Upload property deeds, ownership certificates, or rental agreements
-                    </p>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                      onChange={(e) => handleDocumentUpload(e, 'property')}
-                      className="hidden"
-                      id="property-upload"
-                      disabled={uploadingDocument}
-                    />
-                    <label htmlFor="property-upload">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        disabled={uploadingDocument}
-                        asChild
-                      >
-                        <span>
-                          {uploadingDocument ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <Plus className="w-4 h-4 mr-2" />
-                          )}
-                          {uploadingDocument ? 'Uploading...' : 'Add Property Document'}
-                        </span>
-                      </Button>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Other Documents Section */}
-              <div>
-                <h4 className="text-md font-medium mb-3 text-gray-900">Other Documents</h4>
-                <div className="space-y-3">
-                  {documents.filter(doc => {
-                    const type = documentUtils.parseDocumentPath(doc).documentType;
-                    return type !== 'identity' && type !== 'property';
-                  }).map((doc, index) => {
-                    const { originalName, documentType } = documentUtils.parseDocumentPath(doc);
-                    return (
-                      <div key={index} className="document-item">
-                        <div className="document-item-info">
-                          <FileText className="w-5 h-5 text-purple-600" />
-                          <div>
-                            <span className="document-item-name block">{originalName}</span>
-                            <span className="document-item-type">{documentType.replace('-', ' ')}</span>
-                          </div>
-                        </div>
-                        <div className="document-actions">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentView(doc)}
-                            className="p-2"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDocumentDelete(doc)}
-                            className="p-2 text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  <div className="document-upload-zone">
-                    <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600 mb-3 text-sm">
-                      Upload insurance documents, certificates, or other relevant files
-                    </p>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                      onChange={(e) => handleDocumentUpload(e, 'other')}
-                      className="hidden"
-                      id="other-upload"
-                      disabled={uploadingDocument}
-                    />
-                    <label htmlFor="other-upload">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        disabled={uploadingDocument}
-                        asChild
-                      >
-                        <span>
-                          {uploadingDocument ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <Plus className="w-4 h-4 mr-2" />
-                          )}
-                          {uploadingDocument ? 'Uploading...' : 'Add Other Document'}
-                        </span>
-                      </Button>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Help Text */}
-            <div className="document-upload-guidelines">
-              <h5 className="text-sm font-medium text-blue-900 mb-2">Document Guidelines</h5>
-              <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Accepted formats: PDF, JPG, PNG, DOC, DOCX</li>
-                <li>• Maximum file size: 10MB per document</li>
-                <li>• Documents are stored securely and encrypted</li>
-                <li>• Upload clear, readable copies for faster verification</li>
+            <h3 className="text-lg font-semibold mb-4">Documents</h3>
+            <div className="mb-2 text-sm text-gray-600">Allowed file types: PDF, JPG, JPEG, PNG, DOC, DOCX. Max size: 10MB.</div>
+            <form className="flex gap-2 mb-4" onSubmit={handleDocumentUpload}>
+              <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={e => setNewDocFile(e.target.files?.[0] || null)} />
+              <Input type="text" placeholder="Display name" value={newDocName} onChange={e => setNewDocName(e.target.value)} />
+              <Button type="submit" disabled={uploadingDocument || !newDocFile || !newDocName.trim()}>{uploadingDocument ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload</Button>
+            </form>
+            <ul className="space-y-2">
+              {(profileData?.documents || [])
+                .filter(docObj => docObj && typeof docObj === 'object' && docObj.path)
+                .map((docObj, idx) => (
+                  <li key={docObj.path || idx} className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    <span className="flex-1">{docObj.displayName || (docObj.path ? docObj.path.split('/').pop() : 'Unknown')}</span>
+                    <Button size="sm" variant="outline" onClick={() => handleDocumentView(docObj)}><Download className="w-4 h-4" /> View</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDocumentDelete(docObj)}><Trash2 className="w-4 h-4" /> Delete</Button>
+                  </li>
+                ))}
               </ul>
-            </div>
           </Card>
         )}
 
