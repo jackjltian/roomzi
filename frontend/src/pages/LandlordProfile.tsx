@@ -48,6 +48,11 @@ const LandlordProfile = () => {
   const [newDocFile, setNewDocFile] = useState<File | null>(null);
   const [newDocName, setNewDocName] = useState("");
 
+  // Add preview modal state
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewType, setPreviewType] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string | null>(null);
+
   // Fetch landlord profile data
   useEffect(() => {
     const fetchProfile = async () => {
@@ -291,13 +296,20 @@ const LandlordProfile = () => {
     }
   };
 
-  // Update handleDocumentView to use document object
+  // Update handleDocumentView to show modal preview
   const handleDocumentView = async (docObj: { path: string; displayName: string }) => {
     try {
       const { supabase } = await import('@/lib/supabaseClient');
       const { data } = await supabase.storage.from('documents').createSignedUrl(docObj.path, 60);
       if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
+        const ext = docObj.path.split('.').pop()?.toLowerCase();
+        let type = '';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext!)) type = 'image';
+        else if (['pdf'].includes(ext!)) type = 'pdf';
+        else type = 'other';
+        setPreviewType(type);
+        setPreviewUrl(data.signedUrl);
+        setPreviewName(docObj.displayName || docObj.path.split('/').pop() || 'Document');
       } else {
         throw new Error('Failed to get signed URL');
       }
@@ -642,6 +654,39 @@ const LandlordProfile = () => {
           </Card>
         )}
       </div>
+      {previewUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-2xl w-full relative shadow-lg">
+            <button className="absolute top-2 right-2 text-gray-500 hover:text-black" onClick={() => setPreviewUrl(null)}>
+              <X className="w-6 h-6" />
+            </button>
+            <h4 className="mb-4 font-semibold text-lg">{previewName}</h4>
+            {previewType === 'image' && (
+              <img src={previewUrl} alt="Document Preview" className="max-h-[70vh] mx-auto" />
+            )}
+            {previewType === 'pdf' && (
+              <iframe src={previewUrl} title="PDF Preview" className="w-full h-[70vh] border rounded" />
+            )}
+            {previewType === 'other' && (
+              <div className="text-center">
+                <p className="mb-2">Preview not available for this file type.</p>
+              </div>
+            )}
+            {/* Download button for all types */}
+            <div className="mt-4 text-center">
+              <a
+                href={previewUrl}
+                download={previewName || 'document'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
