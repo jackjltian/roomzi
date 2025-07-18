@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench } from 'lucide-react';
+import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench, Eye } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
+import { apiFetch, getApiBaseUrl } from '@/utils/api';
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
@@ -14,6 +15,8 @@ const LandlordDashboard = () => {
   const { signOut, user } = useAuth();
   const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
+  const [pendingViewingCount, setPendingViewingCount] = useState(0);
+  const [showViewingBanner, setShowViewingBanner] = useState(false);
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
@@ -81,6 +84,23 @@ const LandlordDashboard = () => {
     fetchPendingMaintenance();
   }, [userId]);
 
+  useEffect(() => {
+    async function fetchPendingViewings() {
+      if (!userId) return;
+      try {
+        const response = await apiFetch(`${getApiBaseUrl()}/api/viewings?landlordId=${userId}`);
+        const pendingViewings = response.filter((v: any) => v.status === 'Pending');
+        setPendingViewingCount(pendingViewings.length);
+        setShowViewingBanner(pendingViewings.length > 0);
+      } catch (error) {
+        console.error('Failed to fetch viewing requests:', error);
+        setPendingViewingCount(0);
+        setShowViewingBanner(false);
+      }
+    }
+    fetchPendingViewings();
+  }, [userId]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
       {/* Header */}
@@ -133,13 +153,25 @@ const LandlordDashboard = () => {
           </div>
         </div>
 
-        {/* Notification banner for pending requests */}
+        {/* Notification banners for pending requests */}
         {showBanner && (
           <div className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded mb-4 flex items-center gap-2 shadow">
             <Wrench className="w-5 h-5" />
             {pendingMaintenanceCount} new maintenance request{pendingMaintenanceCount > 1 ? 's' : ''}!
             <Button size="sm" variant="link" onClick={() => {
               navigate('/landlord/maintenance-requests');
+            }}>
+              View
+            </Button>
+          </div>
+        )}
+
+        {showViewingBanner && (
+          <div className="bg-blue-100 text-blue-800 px-4 py-2 rounded mb-4 flex items-center gap-2 shadow">
+            <Eye className="w-5 h-5" />
+            {pendingViewingCount} new viewing request{pendingViewingCount > 1 ? 's' : ''}!
+            <Button size="sm" variant="link" onClick={() => {
+              navigate('/landlord/viewing-requests');
             }}>
               View
             </Button>
@@ -306,6 +338,20 @@ const LandlordDashboard = () => {
             {pendingMaintenanceCount > 0 && (
               <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
                 {pendingMaintenanceCount}
+              </span>
+            )}
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="flex-col h-auto py-2 relative"
+            onClick={() => navigate('/landlord/viewing-requests')}
+          >
+            <Eye className="w-5 h-5 mb-1" />
+            <span className="text-xs">Viewings</span>
+            {pendingViewingCount > 0 && (
+              <span className="absolute top-0 right-0 bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5">
+                {pendingViewingCount}
               </span>
             )}
           </Button>

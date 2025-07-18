@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
+import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut, Calendar as CalendarIcon, XCircle, CheckCircle, Clock } from 'lucide-react';
 import { Property } from '@/data/sampleProperties';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Map from '@/components/Map';
@@ -48,6 +48,8 @@ const TenantDashboard = () => {
     profilePhoto: '',
   });
   const location = useLocation();
+  const [viewings, setViewings] = useState([]);
+  const [loadingViewings, setLoadingViewings] = useState(true);
 
   // Debug: Log current user info
   useEffect(() => {
@@ -95,6 +97,23 @@ const TenantDashboard = () => {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, []);
+
+  useEffect(() => {
+    const fetchViewings = async () => {
+      if (!user) return;
+      setLoadingViewings(true);
+      try {
+        // Fetch all requests for this tenant
+        const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`);
+        setViewings(res);
+      } catch (err) {
+        setViewings([]);
+      } finally {
+        setLoadingViewings(false);
+      }
+    };
+    fetchViewings();
+  }, [user]);
 
   const fetchProperties = async () => {
     try {
@@ -262,6 +281,36 @@ const TenantDashboard = () => {
 
         {/* Upcoming Payment Banner */}
         <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
+
+        {/* Viewing Requests Section */}
+        <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+            <CalendarIcon className="w-5 h-5 mr-2 text-blue-500" />
+            Your Viewing Requests
+          </h2>
+          {loadingViewings ? (
+            <div className="text-gray-500">Loading...</div>
+          ) : viewings.length === 0 ? (
+            <div className="text-gray-500">No viewing requests yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {viewings.map((v) => (
+                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                  <div>
+                    <div className="font-medium">{v.listing?.title || 'Property'}</div>
+                    <div className="text-sm text-gray-600">{v.requestedDateTime ? new Date(v.requestedDateTime).toLocaleString() : ''}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                    {v.status === 'Approved' && <CheckCircle className="w-4 h-4 text-green-600" />}
+                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Approved' ? 'text-green-700' : 'text-red-600'}`}>{v.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
