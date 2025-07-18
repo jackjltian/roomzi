@@ -145,6 +145,10 @@ const LandlordDashboard = () => {
     setShowProposeModal(false);
   };
 
+  // Filter requests: show all except 'Closed', but always show 'Approved' as reminders
+  const approvedRequests = viewingRequests.filter(v => v.status === 'Approved');
+  const otherRequests = viewingRequests.filter(v => v.status !== 'Closed');
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
       {/* Header */}
@@ -222,7 +226,26 @@ const LandlordDashboard = () => {
             <div className="text-gray-500">No viewing requests yet.</div>
           ) : (
             <div className="space-y-4">
-              {viewingRequests.slice(0, 5).map((v) => (
+              {/* Approved requests as reminders */}
+              {approvedRequests.map((v) => (
+                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                  <div>
+                    <div className="font-medium">{v.listing?.title || 'Property'}</div>
+                    <div className="text-sm text-gray-600">
+                      Requested: {formatDateSafe(v.requestedDateTime)}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-semibold text-green-700">Approved</span>
+                  </div>
+                </div>
+              ))}
+              {/* Other requests (not closed) */}
+              {otherRequests.map((v) => (
                 <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
                   <div>
                     <div className="font-medium">{v.listing?.title || 'Property'}</div>
@@ -235,17 +258,21 @@ const LandlordDashboard = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
-                    {v.status === 'Approved' && <CheckCircle className="w-4 h-4 text-green-600" />}
                     {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
                     {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
-                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Approved' ? 'text-green-700' : v.status === 'Declined' ? 'text-red-600' : 'text-blue-700'}`}>{v.status}</span>
+                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
                   </div>
-                  {v.status === 'Pending' && (
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
-                      <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    {v.status === 'Pending' && (
+                      <>
+                        <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
+                        <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
+                      </>
+                    )}
+                    {v.status !== 'Closed' && (
+                      <Button type="button" size="sm" variant="outline" onClick={() => handleStatusUpdate(v.id, 'Closed', undefined)}>Close Request</Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
