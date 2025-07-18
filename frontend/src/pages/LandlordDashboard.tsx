@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench, Eye } from 'lucide-react';
+import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench, Eye, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { format } from 'date-fns';
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
@@ -17,10 +20,23 @@ const LandlordDashboard = () => {
   const [showBanner, setShowBanner] = useState(false);
   const [pendingViewingCount, setPendingViewingCount] = useState(0);
   const [showViewingBanner, setShowViewingBanner] = useState(false);
+  const [viewingRequests, setViewingRequests] = useState([]);
+  const [loadingViewings, setLoadingViewings] = useState(true);
+  const [showProposeModal, setShowProposeModal] = useState(false);
+  const [proposeRequestId, setProposeRequestId] = useState(null);
+  const [proposedDate, setProposedDate] = useState('');
+  const [proposedTime, setProposedTime] = useState('');
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
   const userId = user?.id || '';
+
+  // Helper to format date safely
+  const formatDateSafe = (dateString) => {
+    if (!dateString) return 'Not set';
+    const d = new Date(dateString);
+    return isNaN(d.getTime()) ? 'Not set' : d.toLocaleString();
+  };
 
   const handleCreateListing = () => {
     navigate('/create-listing');
@@ -85,21 +101,49 @@ const LandlordDashboard = () => {
   }, [userId]);
 
   useEffect(() => {
-    async function fetchPendingViewings() {
+    const fetchViewingRequests = async () => {
       if (!userId) return;
+      setLoadingViewings(true);
       try {
         const response = await apiFetch(`${getApiBaseUrl()}/api/viewings?landlordId=${userId}`);
-        const pendingViewings = response.filter((v: any) => v.status === 'Pending');
-        setPendingViewingCount(pendingViewings.length);
-        setShowViewingBanner(pendingViewings.length > 0);
+        setViewingRequests(response);
       } catch (error) {
-        console.error('Failed to fetch viewing requests:', error);
-        setPendingViewingCount(0);
-        setShowViewingBanner(false);
+        setViewingRequests([]);
+      } finally {
+        setLoadingViewings(false);
       }
-    }
-    fetchPendingViewings();
+    };
+    fetchViewingRequests();
   }, [userId]);
+
+  const handleStatusUpdate = async (requestId, status, proposedDateTime) => {
+    try {
+      await apiFetch(`${getApiBaseUrl()}/api/viewings/${requestId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(status === 'Proposed' ? { status, proposedDateTime } : { status }),
+      });
+      setViewingRequests(prev => prev.map(r => r.id === requestId ? { ...r, status, proposedDateTime: status === 'Proposed' ? proposedDateTime : null } : r));
+    } catch (error) {
+      // handle error
+    }
+  };
+
+  const openProposeModal = (requestId) => {
+    setProposeRequestId(requestId);
+    setShowProposeModal(true);
+    setProposedDate('');
+    setProposedTime('');
+  };
+
+  const submitProposeTime = () => {
+    if (!proposedDate || !proposedTime) return;
+    const [hours, minutes] = proposedTime.split(':');
+    const dateTime = new Date(proposedDate);
+    dateTime.setHours(Number(hours));
+    dateTime.setMinutes(Number(minutes));
+    handleStatusUpdate(proposeRequestId, 'Proposed', dateTime.toISOString());
+    setShowProposeModal(false);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
@@ -166,17 +210,64 @@ const LandlordDashboard = () => {
           </div>
         )}
 
-        {showViewingBanner && (
-          <div className="bg-blue-100 text-blue-800 px-4 py-2 rounded mb-4 flex items-center gap-2 shadow">
-            <Eye className="w-5 h-5" />
-            {pendingViewingCount} new viewing request{pendingViewingCount > 1 ? 's' : ''}!
-            <Button size="sm" variant="link" onClick={() => {
-              navigate('/landlord/viewing-requests');
-            }}>
-              View
-            </Button>
-          </div>
-        )}
+        {/* Viewing Requests Section */}
+        <Card className="p-6 mb-8 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+            <Eye className="w-5 h-5 mr-2 text-blue-500" />
+            Viewing Requests
+          </h2>
+          {loadingViewings ? (
+            <div className="text-gray-500">Loading...</div>
+          ) : viewingRequests.length === 0 ? (
+            <div className="text-gray-500">No viewing requests yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {viewingRequests.slice(0, 5).map((v) => (
+                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                  <div>
+                    <div className="font-medium">{v.listing?.title || 'Property'}</div>
+                    <div className="text-sm text-gray-600">
+                      Requested: {formatDateSafe(v.requestedDateTime)}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                    {v.status === 'Approved' && <CheckCircle className="w-4 h-4 text-green-600" />}
+                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Approved' ? 'text-green-700' : v.status === 'Declined' ? 'text-red-600' : 'text-blue-700'}`}>{v.status}</span>
+                  </div>
+                  {v.status === 'Pending' && (
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
+                      <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Propose New Time Modal */}
+        <Dialog open={showProposeModal} onOpenChange={setShowProposeModal}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Propose New Time</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <Input type="date" value={proposedDate} onChange={e => setProposedDate(e.target.value)} />
+              <Input type="time" value={proposedTime} onChange={e => setProposedTime(e.target.value)} />
+            </div>
+            <DialogFooter>
+              <Button onClick={submitProposeTime} disabled={!proposedDate || !proposedTime} type="button">Submit</Button>
+              <Button variant="destructive" onClick={() => handleStatusUpdate(proposeRequestId, 'Declined', undefined)} type="button">Decline Without Proposing</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats Overview */}
         <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -345,20 +436,6 @@ const LandlordDashboard = () => {
             variant="ghost" 
             size="sm" 
             className="flex-col h-auto py-2 relative"
-            onClick={() => navigate('/landlord/viewing-requests')}
-          >
-            <Eye className="w-5 h-5 mb-1" />
-            <span className="text-xs">Viewings</span>
-            {pendingViewingCount > 0 && (
-              <span className="absolute top-0 right-0 bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5">
-                {pendingViewingCount}
-              </span>
-            )}
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="flex-col h-auto py-2"
             onClick={() => navigate('/landlord/profile')}
           >
             <Settings className="w-5 h-5 mb-1" />

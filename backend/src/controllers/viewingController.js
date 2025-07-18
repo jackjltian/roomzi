@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 const createViewingRequest = async (req, res) => {
   try {
     const { propertyId, tenantId, landlordId, requestedDateTime } = req.body;
+    console.log("Received viewing request:", req.body);
     if (!propertyId || !tenantId || !landlordId || !requestedDateTime) {
       return res.status(400).json({ error: "Missing required fields." });
     }
@@ -42,16 +43,49 @@ const getViewingRequestsForLandlord = async (req, res) => {
   }
 };
 
+const getViewingRequestsForTenant = async (req, res) => {
+  try {
+    const { tenantId } = req.query;
+    if (!tenantId) {
+      return res.status(400).json({ error: "Missing tenantId." });
+    }
+    const requests = await prisma.viewingRequest.findMany({
+      where: { tenantId },
+      include: { listing: true, landlord: true },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(convertBigIntToString(requests));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to fetch viewing requests." });
+  }
+};
+
 const updateViewingRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    if (!["Approved", "Declined"].includes(status)) {
+    const { status, proposedDateTime } = req.body;
+    if (!["Approved", "Declined", "Proposed", "Closed"].includes(status)) {
       return res.status(400).json({ error: "Invalid status." });
+    }
+    const updateData = { status };
+    if (status === "Proposed" && proposedDateTime) {
+      updateData.proposedDateTime = new Date(proposedDateTime);
+    } else if (status === "Approved") {
+      // If approving a proposed time, set requestedDateTime to proposedDateTime and clear proposedDateTime
+      const req = await prisma.viewingRequest.findUnique({
+        where: { id: Number(id) },
+      });
+      if (req && req.proposedDateTime) {
+        updateData.requestedDateTime = req.proposedDateTime;
+        updateData.proposedDateTime = null;
+      }
+    } else if (status !== "Proposed") {
+      updateData.proposedDateTime = null;
     }
     const updated = await prisma.viewingRequest.update({
       where: { id: Number(id) },
-      data: { status },
+      data: updateData,
       include: { listing: true, tenant: true, landlord: true },
     });
     res.json(convertBigIntToString(updated));
@@ -84,24 +118,6 @@ const getApprovedViewings = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to fetch approved viewings." });
-  }
-};
-
-const getViewingRequestsForTenant = async (req, res) => {
-  try {
-    const { tenantId } = req.query;
-    if (!tenantId) {
-      return res.status(400).json({ error: "Missing tenantId." });
-    }
-    const requests = await prisma.viewingRequest.findMany({
-      where: { tenantId },
-      include: { listing: true, landlord: true },
-      orderBy: { createdAt: "desc" },
-    });
-    res.json(convertBigIntToString(requests));
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch viewing requests." });
   }
 };
 

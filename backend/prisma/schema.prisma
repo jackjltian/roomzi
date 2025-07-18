@@ -120,7 +120,8 @@ model ViewingRequest {
   tenantId          String            @db.Uuid
   landlordId        String            @db.Uuid
   requestedDateTime DateTime
-  status            String            @default("Pending") // Pending, Approved, Declined
+  proposedDateTime   DateTime?
+  status            String            @default("Pending") // Pending, Approved, Declined, Proposed, Closed
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 

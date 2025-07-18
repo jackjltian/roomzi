@@ -365,6 +365,16 @@ const PropertyDetails = () => {
                   const dateTime = new Date(selectedDate);
                   dateTime.setHours(Number(hours));
                   dateTime.setMinutes(Number(minutes));
+                  // Debug log
+                  console.log('Scheduling viewing:', {
+                    propertyId: property.id,
+                    tenantId: user.id,
+                    landlordId: property.landlordId,
+                    requestedDateTime: dateTime.toISOString(),
+                    selectedDate,
+                    selectedTime,
+                    dateTime,
+                  });
                   // Prepare payload
                   await apiFetch(`${getApiBaseUrl()}/api/viewings`, {
                     method: 'POST',

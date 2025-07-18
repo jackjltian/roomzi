@@ -98,20 +98,21 @@ const TenantDashboard = () => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, []);
 
+  const fetchViewings = async () => {
+    if (!user) return;
+    setLoadingViewings(true);
+    try {
+      // Fetch all requests for this tenant
+      const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`);
+      setViewings(res);
+    } catch (err) {
+      setViewings([]);
+    } finally {
+      setLoadingViewings(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchViewings = async () => {
-      if (!user) return;
-      setLoadingViewings(true);
-      try {
-        // Fetch all requests for this tenant
-        const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`);
-        setViewings(res);
-      } catch (err) {
-        setViewings([]);
-      } finally {
-        setLoadingViewings(false);
-      }
-    };
     fetchViewings();
   }, [user]);
 
@@ -214,6 +215,17 @@ const TenantDashboard = () => {
     navigate(`/property/${propertyId}`);
   };
 
+  // Filter requests: show all except 'Closed', but always show 'Approved' as reminders
+  const approvedRequests = viewings.filter(v => v.status === 'Approved');
+  const otherRequests = viewings.filter(v => v.status !== 'Closed' && v.status !== 'Approved');
+
+  // Helper to format date safely
+  const formatDateSafe = (dateString: string) => {
+    if (!dateString) return 'Not set';
+    const d = new Date(dateString);
+    return isNaN(d.getTime()) ? 'Not set' : d.toLocaleString();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Enhanced Header */}
@@ -294,18 +306,60 @@ const TenantDashboard = () => {
             <div className="text-gray-500">No viewing requests yet.</div>
           ) : (
             <div className="space-y-4">
-              {viewings.map((v) => (
+              {/* Approved requests as reminders */}
+              {approvedRequests.map((v) => (
+                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                  <div>
+                    <div className="font-medium">{v.listing?.title || 'Property'}</div>
+                    <div className="text-sm text-gray-600">
+                      Requested: {formatDateSafe(v.requestedDateTime)}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-semibold text-green-700">Approved</span>
+                  </div>
+                </div>
+              ))}
+              {/* Other requests */}
+              {otherRequests.map((v) => (
                 <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
                   <div>
                     <div className="font-medium">{v.listing?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">{v.requestedDateTime ? new Date(v.requestedDateTime).toLocaleString() : ''}</div>
+                    <div className="text-sm text-gray-600">
+                      Requested: {formatDateSafe(v.requestedDateTime)}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
-                    {v.status === 'Approved' && <CheckCircle className="w-4 h-4 text-green-600" />}
                     {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
-                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Approved' ? 'text-green-700' : 'text-red-600'}`}>{v.status}</span>
+                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
                   </div>
+                  {v.status === 'Proposed' && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) });
+                        fetchViewings();
+                      }}>Approve</Button>
+                      <Button size="sm" variant="destructive" onClick={async () => {
+                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Declined' }) });
+                        fetchViewings();
+                      }}>Decline</Button>
+                    </div>
+                  )}
+                  {v.status !== 'Closed' && (
+                    <Button size="sm" variant="outline" onClick={async () => {
+                      await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Closed' }) });
+                      fetchViewings();
+                    }}>Close Request</Button>
+                  )}
                 </div>
               ))}
             </div>
