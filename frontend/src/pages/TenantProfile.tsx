@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2, Save, X, Download, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Camera, FileText, Settings, Home, Loader2, Save, X, Download, Trash2, Upload } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +22,7 @@ interface TenantProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+  documents?: Array<{ path: string; displayName: string }>;
   created_at?: string;
   updated_at?: string;
 }
@@ -54,6 +55,21 @@ const TenantProfile = () => {
     address: '',
   });
 
+  // Add state for document upload
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [newDocFile, setNewDocFile] = useState<File | null>(null);
+  const [newDocName, setNewDocName] = useState('');
+  const [documents, setDocuments] = useState<{ path: string; displayName: string }[]>([]);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string>('');
+  const [previewType, setPreviewType] = useState<'image' | 'pdf' | 'other'>('other');
+
+  const tabs = [
+    { id: 'info', label: 'Information', icon: User },
+    { id: 'docs', label: 'Documents', icon: FileText },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return;
@@ -70,6 +86,7 @@ const TenantProfile = () => {
             phone: result.data.data.phone || '',
             address: result.data.data.address || '',
           });
+          setDocuments(result.data.data.documents || []);
         } else {
           // Create profile if not found with user's auth data
           const createResult = await tenantApi.create(user.id, user.email || '', user.user_metadata);
@@ -81,6 +98,7 @@ const TenantProfile = () => {
               phone: createResult.data.data.phone || '',
               address: createResult.data.data.address || '',
             });
+            setDocuments(createResult.data.data.documents || []);
             setEditMode(true);
           }
         }
@@ -273,11 +291,72 @@ const TenantProfile = () => {
     setEditMode(false);
   };
 
-  const tabs = [
-    { id: 'info', label: 'Personal Info', icon: User },
-    { id: 'credit', label: 'Credit Score', icon: CreditCard },
-    { id: 'settings', label: 'Settings', icon: Settings },
-  ];
+  // Add document upload handler
+  const handleDocumentUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user?.id || !newDocFile || !newDocName.trim()) return;
+
+    setUploadingDocument(true);
+    try {
+      const documentPath = await documentUtils.uploadDocument(newDocFile, user.id, newDocName);
+      const newDocObj = { path: documentPath, displayName: newDocName };
+      const newDocuments = [...(profileData?.documents || []), newDocObj];
+      console.log('Sending documents to API:', newDocuments);
+      const updateResult = await tenantApi.update(user.id, { documents: newDocuments });
+
+      if (updateResult.success) {
+        setDocuments(newDocuments);
+        setProfileData(prev => prev ? { ...prev, documents: newDocuments } : null);
+        setNewDocFile(null);
+        setNewDocName('');
+        toast({ title: "Success", description: `Document uploaded successfully!`, variant: "default" });
+      }
+    } catch (error) {
+      toast({ title: "Upload Failed", description: (error as Error)?.message || "Failed to upload document.", variant: "destructive" });
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  // Add document delete handler
+  const handleDocumentDelete = async (docObj: { path: string; displayName: string }) => {
+    if (!user?.id) return;
+
+    try {
+      await documentUtils.deleteDocument(docObj.path);
+      const newDocuments = (profileData?.documents || []).filter(d => d.path !== docObj.path);
+      const updateResult = await tenantApi.update(user.id, { documents: newDocuments });
+
+      if (updateResult.success) {
+        setDocuments(newDocuments);
+        setProfileData(prev => prev ? { ...prev, documents: newDocuments } : null);
+        toast({ title: "Success", description: "Document deleted successfully!", variant: "default" });
+      }
+    } catch (error) {
+      toast({ title: "Delete Failed", description: (error as Error)?.message || "Failed to delete document.", variant: "destructive" });
+    }
+  };
+
+  // Add document view handler
+  const handleDocumentView = async (docObj: { path: string; displayName: string }) => {
+    try {
+      const { data } = await supabase.storage.from('documents').createSignedUrl(docObj.path, 60);
+      if (data?.signedUrl) {
+        setPreviewUrl(data.signedUrl);
+        const fileExtension = docObj.path.split('.').pop()?.toLowerCase();
+        if (fileExtension === 'pdf') {
+          setPreviewType('pdf');
+        } else if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension || '')) {
+          setPreviewType('image');
+        } else {
+          setPreviewType('other');
+        }
+        setPreviewName(docObj.displayName || docObj.path.split('/').pop() || 'Document');
+      }
+    } catch (error) {
+      toast({ title: "View Failed", description: "Failed to open document. Please try again.", variant: "destructive" });
+    }
+  };
 
   if (loading) {
     return (
@@ -476,10 +555,27 @@ const TenantProfile = () => {
             </div>
           </Card>
         )}
-        {activeTab === 'credit' && (
+        {activeTab === 'docs' && (
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Credit Score</h3>
-            <p>Your credit score is not yet available. Please check back later.</p>
+            <h3 className="text-lg font-semibold mb-4">Documents</h3>
+            <div className="mb-2 text-sm text-gray-600">Allowed file types: PDF, JPG, JPEG, PNG, DOC, DOCX. Max size: 10MB.</div>
+            <form className="flex gap-2 mb-4" onSubmit={handleDocumentUpload}>
+              <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={e => setNewDocFile(e.target.files?.[0] || null)} />
+              <Input type="text" placeholder="Display name" value={newDocName} onChange={e => setNewDocName(e.target.value)} />
+              <Button type="submit" disabled={uploadingDocument || !newDocFile || !newDocName.trim()}>{uploadingDocument ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload</Button>
+            </form>
+            <ul className="space-y-2">
+              {(profileData?.documents || [])
+                .filter(docObj => docObj && typeof docObj === 'object' && docObj.path)
+                .map((docObj, idx) => (
+                  <li key={docObj.path || idx} className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    <span className="flex-1">{docObj.displayName || (docObj.path ? docObj.path.split('/').pop() : 'Unknown')}</span>
+                    <Button size="sm" variant="outline" onClick={() => handleDocumentView(docObj)}><Download className="w-4 h-4" /> View</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDocumentDelete(docObj)}><Trash2 className="w-4 h-4" /> Delete</Button>
+                  </li>
+                ))}
+              </ul>
           </Card>
         )}
         {activeTab === 'settings' && (
@@ -489,6 +585,39 @@ const TenantProfile = () => {
           </Card>
         )}
       </div>
+      {previewUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-2xl w-full relative shadow-lg">
+            <button className="absolute top-2 right-2 text-gray-500 hover:text-black" onClick={() => setPreviewUrl(null)}>
+              <X className="w-6 h-6" />
+            </button>
+            <h4 className="mb-4 font-semibold text-lg">{previewName}</h4>
+            {previewType === 'image' && (
+              <img src={previewUrl} alt="Document Preview" className="max-h-[70vh] mx-auto" />
+            )}
+            {previewType === 'pdf' && (
+              <iframe src={previewUrl} title="PDF Preview" className="w-full h-[70vh] border rounded" />
+            )}
+            {previewType === 'other' && (
+              <div className="text-center">
+                <p className="mb-2">Preview not available for this file type.</p>
+              </div>
+            )}
+            {/* Download button for all types */}
+            <div className="mt-4 text-center">
+              <a
+                href={previewUrl}
+                download={previewName || 'document'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
