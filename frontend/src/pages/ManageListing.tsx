@@ -266,7 +266,7 @@ const ManageListing = () => {
                                     <Button className="w-fit">
                                         View Tenant Details
                                     </Button>
-                                    <Button className="w-fit">
+                                    <Button className="w-fit" onClick={() => navigate(`/landlord/lease-agreement/${property.id}`)}>
                                         View Lease Agreement
                                     </Button>
                                 </div>

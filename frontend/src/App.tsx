@@ -32,6 +32,8 @@ import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
 import TenantMaintenanceRequest from "./pages/TenantMaintenanceRequest";
 import LandlordMaintenanceRequests from "./pages/LandlordMaintenanceRequests";
+import RenewLease from "./pages/RenewLease";
+import LandlordLeaseAgreement from "./pages/LandlordLeaseAgreement";
 
 // Removed duplicate import of Payments (PaymentHistory)
 // import Payments from "./pages/PaymentHistory";
@@ -105,6 +107,7 @@ const App = () => (
                       <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
                       <Route path="maintenance/:listingId" element={<TenantMaintenanceRequest />} />
+                      <Route path="renew-lease/:listingId" element={<RenewLease />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
@@ -119,6 +122,7 @@ const App = () => (
                       <Route path="chats" element={<LandlordChats />} />
                       <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
                       <Route path="maintenance-requests" element={<LandlordMaintenanceRequests />} />
+                      <Route path="lease-agreement/:listingId" element={<LandlordLeaseAgreement />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
