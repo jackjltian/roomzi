@@ -124,8 +124,8 @@ model leases {
   start_date      DateTime?        @db.Date
   end_date        DateTime?        @db.Date
   rent            Float?
-  terms           String?
   signed          Boolean          @default(false)
   listings        listings?        @relation(fields: [listing_id], references: [id], onDelete: NoAction)
   tenant_profiles tenant_profiles? @relation(fields: [tenant_id], references: [id], onDelete: NoAction)
+  document   String?
 }

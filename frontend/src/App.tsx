@@ -33,6 +33,8 @@ import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
 import TenantMaintenanceRequest from "./pages/TenantMaintenanceRequest";
 import LandlordMaintenanceRequests from "./pages/LandlordMaintenanceRequests";
+import TenantLease from './pages/TenantLease';
+import TenantLeasedProperties from "./pages/TenantLeasedProperties";
 
 // Removed duplicate import of Payments (PaymentHistory)
 // import Payments from "./pages/PaymentHistory";
@@ -101,11 +103,13 @@ const App = () => (
                       <Route path="/" element={<TenantDashboard />} />
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
-                      <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="my-house" element={<TenantLeasedProperties />} />
+                      <Route path="my-house/:listingId" element={<TenantMyHouse />} />
                       <Route path="financial-account" element={<FinancialAccount />} />
                       <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
                       <Route path="maintenance/:listingId" element={<TenantMaintenanceRequest />} />
+                      <Route path="lease/:leaseId" element={<TenantLease />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 

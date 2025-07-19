@@ -136,6 +136,10 @@ export const getListingById = async (req, res) => {
             image_url: true,
           },
         },
+        leases: {
+          orderBy: { created_at: "desc" },
+          take: 1, // Get the most recent lease
+        },
       },
     });
 
@@ -147,34 +151,86 @@ export const getListingById = async (req, res) => {
 
     // Convert BigInt to string for JSON serialization and map landlord/tenant data
     const responseData = {
-      ...listing,
+      // Explicitly select fields to avoid BigInt serialization issues
       id: listing.id.toString(),
+      created_at: listing.created_at,
       landlord_id: listing.landlord_id?.toString(),
       tenant_id: listing.tenant_id?.toString(),
+      title: listing.title,
+      type: listing.type,
+      address: listing.address,
+      city: listing.city,
+      state: listing.state,
+      zip_code: listing.zip_code,
+      bedrooms: listing.bedrooms,
+      bathrooms: listing.bathrooms,
+      area: listing.area,
+      price: listing.price,
+      description: listing.description,
+      lease_type: listing.lease_type,
+      requirements: listing.requirements,
+      coordinates: listing.coordinates,
+      available: listing.available,
+      landlord_name: listing.landlord_name,
+      landlord_phone: listing.landlord_phone,
+      // Process lease data
+      leases: listing.leases?.map(lease => ({
+        id: lease.id.toString(),
+        created_at: lease.created_at,
+        tenant_id: lease.tenant_id?.toString(),
+        listing_id: lease.listing_id?.toString(),
+        start_date: lease.start_date,
+        end_date: lease.end_date,
+        rent: lease.rent,
+        signed: lease.signed,
+        document: lease.document,
+      })) || [],
+      // Landlord profile data
       landlord_name: listing.landlord_profiles?.full_name,
       landlord_phone: listing.landlord_profiles?.phone,
+      landlord_email: listing.landlord_profiles?.email,
+      // Tenant profile data
       tenant_name: listing.tenant_profiles?.full_name,
       tenant_phone: listing.tenant_profiles?.phone,
       images: Array.isArray(listing.images)
         ? listing.images
         : (typeof listing.images === 'string' && listing.images.trim().startsWith('[')
-            ? JSON.parse(listing.images)
+            ? (() => {
+                try { return JSON.parse(listing.images); }
+                catch (e) { return []; }
+              })()
             : []),
       amenities: Array.isArray(listing.amenities)
         ? listing.amenities
         : (typeof listing.amenities === 'string' && listing.amenities.trim().startsWith('[')
-            ? JSON.parse(listing.amenities)
+            ? (() => {
+                try { return JSON.parse(listing.amenities); }
+                catch (e) { return []; }
+              })()
             : []),
       requirements: Array.isArray(listing.requirements)
         ? listing.requirements
         : (typeof listing.requirements === 'string' && listing.requirements.trim().startsWith('[')
-            ? JSON.parse(listing.requirements)
+            ? (() => {
+                try { return JSON.parse(listing.requirements); }
+                catch (e) { return []; }
+              })()
             : (listing.requirements ? [listing.requirements] : [])),
       house_rules: Array.isArray(listing.house_rules)
         ? listing.house_rules
         : (typeof listing.house_rules === 'string' && listing.house_rules.trim().startsWith('[')
-            ? JSON.parse(listing.house_rules)
+            ? (() => {
+                try { return JSON.parse(listing.house_rules); }
+                catch (e) { return []; }
+              })()
             : (listing.house_rules ? [listing.house_rules] : [])),
+      // Add lease data with safe handling
+      lease_start: listing.leases && listing.leases.length > 0 && listing.leases[0]?.start_date 
+        ? listing.leases[0].start_date.toISOString().split('T')[0] 
+        : "N/A",
+      lease_end: listing.leases && listing.leases.length > 0 && listing.leases[0]?.end_date 
+        ? listing.leases[0].end_date.toISOString().split('T')[0] 
+        : "N/A",
     };
 
     res.json(successResponse(responseData, "Listing retrieved successfully"));

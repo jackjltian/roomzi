@@ -205,6 +205,18 @@ async function main() {
     ],
   });
 
+  // Create sample lease for the rented listing
+  const lease1 = await prisma.leases.create({
+    data: {
+      tenant_id: tenant1.id,
+      listing_id: listing3.id,
+      start_date: new Date("2024-01-01"),
+      end_date: new Date("2024-12-31"),
+      rent: 1800.0,
+      signed: true,
+    },
+  });
+
   console.log("✅ Database seeded successfully!");
   console.log(
     `👨‍💼 Created landlords: ${landlord1.full_name}, ${landlord2.full_name}`
@@ -213,6 +225,7 @@ async function main() {
   console.log(
     `🏠 Created listings: ${listing1.title}, ${listing2.title}, ${listing3.title}`
   );
+  console.log(`📄 Created lease for ${tenant1.full_name}`);
   console.log(`💬 Created chat with ${await prisma.messages.count()} messages`);
 }
 

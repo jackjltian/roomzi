@@ -595,3 +595,40 @@ const { data: buckets, error: bucketsError } = await supabase.storage.listBucket
     }
   },
 };
+
+// Lease API
+export const getLeasesForTenant = async (tenantId: string) => {
+  const url = `${getApiBaseUrl()}/api/leases/tenant/${tenantId}`;
+  return apiFetch(url);
+};
+
+export const getLeaseById = async (leaseId: string) => {
+  const url = `${getApiBaseUrl()}/api/leases/${leaseId}`;
+  return apiFetch(url);
+};
+
+export const uploadSignedLease = async (leaseId: string, file: File) => {
+  const url = `${getApiBaseUrl()}/api/leases/${leaseId}/upload`;
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.message || 'Failed to upload signed lease');
+  }
+  return response.json();
+};
+
+export const getListingById = async (listingId: string) => {
+  const url = `${getApiBaseUrl()}/api/listings/${listingId}`;
+  return apiFetch(url);
+};
+
+// Fetch lease history for a tenant and a property
+export const getLeaseHistoryForTenantAndListing = async (tenantId: string, listingId: string | number) => {
+  const url = `${getApiBaseUrl()}/api/leases/history?tenantId=${tenantId}&listingId=${listingId}`;
+  return apiFetch(url);
+};
