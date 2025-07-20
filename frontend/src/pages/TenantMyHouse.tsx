@@ -356,7 +356,7 @@ const TenantMyHouse = () => {
                   <Calendar className="w-4 h-4 mr-2" />
                   Schedule Inspection
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate(`/tenant/renew-lease/${currentRental.id}`)}>
                   <User className="w-4 h-4 mr-2" />
                   Lease Renewal
                 </Button>
