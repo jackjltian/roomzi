@@ -28,6 +28,7 @@ router.use("/tenants", tenantRoutes);
 router.use("/listings", listingRoutes);
 router.use("/chats", chatRoutes);
 router.use("/payments", paymentRoutes);
+router.use("/leases", leaseRoutes);
 router.use("/landlord", landlordRouter);
 router.use("/leases", leaseRoutes);
 

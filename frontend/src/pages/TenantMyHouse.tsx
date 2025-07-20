@@ -1,66 +1,118 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
 import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
+import { useState as useReactState, useEffect as useReactEffect } from 'react';
+import { getLeaseHistoryForTenantAndListing, getListingById } from '@/utils/api';
 
 const TenantMyHouse = () => {
   const navigate = useNavigate();
+  const { listingId } = useParams();
   const { user } = useAuth();
   const tenantId = user?.id;
-  const [hasRental, setHasRental] = useState(true); // Set to true to show rental details
-  const [currentRental, setCurrentRental] = useState({
-    id: "1",
-    propertyTitle: "My Rental Property",
-    address: "123 Main Street, New York, NY",
-    landlordName: "John Smith",
-    landlordPhone: "(555) 123-4567",
-    landlordEmail: "john.smith@email.com",
-    rent: 2500,
-    leaseStart: "January 1, 2024",
-    leaseEnd: "December 31, 2024",
-    image: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
-  });
+  const [hasRental, setHasRental] = useState(false);
+  const [currentRental, setCurrentRental] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [showHistory, setShowHistory] = useReactState(false);
+  const [leaseHistory, setLeaseHistory] = useReactState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useReactState(false);
+  const [historyError, setHistoryError] = useReactState<string | null>(null);
 
   useEffect(() => {
-    // Using demo data instead of API call
-    // Uncomment the code below if you want to fetch real data from the API
-
     if (!tenantId) return;
+    setLoading(true);
     
-    //Fetch tenant's rental data
-    fetch(`http://localhost:3001/api/tenants/${tenantId}/listings`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data && data.data.length > 0) {
-          const rental = data.data[0]; // Get the first rental
-          setCurrentRental({
-            id: rental.id,
-            propertyTitle: rental.title || "My Rental Property",
-            address: `${rental.address}, ${rental.city}, ${rental.state}`,
-            landlordName: rental.landlord_name || "Landlord",
-            landlordPhone: rental.landlord_phone || "N/A",
-            landlordEmail: "landlord@email.com", // This would come from landlord profile
-            rent: rental.price || 0,
-            leaseStart: "January 1, 2024", // This would come from lease data
-            leaseEnd: "December 31, 2024", // This would come from lease data
-            image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
-          });
-          setHasRental(true);
+    const fetchRentalData = async () => {
+      try {
+        if (listingId) {
+          // Fetch specific listing by ID
+          const response = await getListingById(listingId);
+          if (response.success && response.data) {
+            const rental = response.data;
+            setCurrentRental({
+              id: rental.id,
+              propertyTitle: rental.title || "Property",
+              address: `${rental.address}, ${rental.city}, ${rental.state}`,
+              landlordName: rental.landlord_name || "Landlord",
+              landlordPhone: rental.landlord_phone || rental.landlordPhone || "N/A",
+              landlordEmail: rental.landlord_email || rental.landlordEmail || "N/A",
+              rent: rental.price || 0,
+              leaseStart: rental.lease_start || "N/A",
+              leaseEnd: rental.lease_end || "N/A",
+              image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
+            });
+            setHasRental(true);
+          } else {
+            setHasRental(false);
+            setCurrentRental(null);
+          }
         } else {
-          setHasRental(false);
+          // Fetch current rental (original behavior)
+          const response = await fetch(`http://localhost:3001/api/tenants/${tenantId}/listings`);
+          const data = await response.json();
+          
+          if (data.success && data.data && data.data.length > 0) {
+            // Find the property where available === false (rented)
+            const rental = data.data.find((listing: any) => listing.available === false);
+            if (rental) {
+              setCurrentRental({
+                id: rental.id,
+                propertyTitle: rental.title || "My Rental Property",
+                address: `${rental.address}, ${rental.city}, ${rental.state}`,
+                landlordName: rental.landlord_name || "Landlord",
+                landlordPhone: rental.landlord_phone || rental.landlordPhone || "N/A",
+                landlordEmail: rental.landlord_email || rental.landlordEmail || "N/A",
+                rent: rental.price || 0,
+                leaseStart: rental.lease_start || "N/A",
+                leaseEnd: rental.lease_end || "N/A",
+                image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
+              });
+              setHasRental(true);
+            } else {
+              setHasRental(false);
+              setCurrentRental(null);
+            }
+          } else {
+            setHasRental(false);
+            setCurrentRental(null);
+          }
         }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Error fetching tenant rental:', err);
+      } catch (err) {
+        console.error('Error fetching rental data:', err);
         setHasRental(false);
+        setCurrentRental(null);
+      } finally {
         setLoading(false);
-      });
-  }, [tenantId]);
+      }
+    };
+    
+    fetchRentalData();
+  }, [tenantId, listingId]);
+
+  useReactEffect(() => {
+    const fetchHistory = async () => {
+      if (showHistory && tenantId && currentRental?.id) {
+        setHistoryLoading(true);
+        setHistoryError(null);
+        try {
+          const res = await getLeaseHistoryForTenantAndListing(tenantId, currentRental.id);
+          if (res.success && Array.isArray(res.data)) {
+            setLeaseHistory(res.data);
+          } else {
+            setHistoryError('Failed to fetch lease history.');
+          }
+        } catch (err) {
+          setHistoryError('Failed to fetch lease history.');
+        } finally {
+          setHistoryLoading(false);
+        }
+      }
+    };
+    fetchHistory();
+  }, [showHistory, tenantId, currentRental]);
 
   const handlePaymentsClick = () => {
     if (currentRental && currentRental.id) {
@@ -80,12 +132,14 @@ const TenantMyHouse = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/tenant')}
+                onClick={() => listingId ? navigate('/tenant/my-house') : navigate(-1)}
                 className="mr-2"
               >
                 <ArrowLeft className="w-4 h-4" />
               </Button>
-              <h1 className="text-2xl font-bold text-roomzi-blue">My House</h1>
+              <h1 className="text-2xl font-bold text-roomzi-blue">
+                {listingId ? 'Property Details' : 'My House'}
+              </h1>
             </div>
             {hasRental && (
               <Badge className="bg-green-100 text-green-800">Active Rental</Badge>
@@ -102,7 +156,9 @@ const TenantMyHouse = () => {
               <Home className="w-12 h-12 text-gray-400 animate-pulse" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Loading...</h2>
-            <p className="text-gray-600">Fetching your rental information</p>
+            <p className="text-gray-600">
+              {listingId ? 'Fetching property details...' : 'Fetching your rental information'}
+            </p>
           </div>
         ) : !hasRental ? (
           // Empty state when no rental
@@ -110,13 +166,17 @@ const TenantMyHouse = () => {
             <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Home className="w-12 h-12 text-gray-400" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">No Current Rental</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              {listingId ? 'Property Not Found' : 'No Current Rental'}
+            </h2>
             <p className="text-gray-600 mb-8 max-w-md mx-auto">
-              When you find and rent a property, all the details will appear here. 
-              Start browsing to find your perfect home!
+              {listingId 
+                ? 'The requested property could not be found or you may not have access to it.'
+                : 'When you find and rent a property, all the details will appear here. Start browsing to find your perfect home!'
+              }
             </p>
-            <Button onClick={() => navigate('/tenant')} className="roomzi-gradient">
-              Browse Properties
+            <Button onClick={() => navigate(listingId ? '/tenant/my-house' : '/tenant')} className="roomzi-gradient">
+              {listingId ? 'Back to My Properties' : 'Browse Properties'}
             </Button>
           </div>
         ) : (
@@ -179,12 +239,74 @@ const TenantMyHouse = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Payment Status
+                    Lease History
                   </label>
-                  <Badge className="bg-green-100 text-green-800">Paid</Badge>
+                  <Button size="sm" variant="outline" onClick={() => setShowHistory(true)}>
+                    View Lease History
+                  </Button>
                 </div>
               </div>
             </Card>
+            {showHistory && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <Card className="p-6 max-w-lg w-full relative">
+                  <button className="absolute top-2 right-2 text-gray-400 hover:text-gray-600" onClick={() => setShowHistory(false)}>&times;</button>
+                  <h4 className="text-lg font-bold mb-4">Lease History</h4>
+                  {historyLoading ? (
+                    <div className="text-gray-500">Loading lease history...</div>
+                  ) : historyError ? (
+                    <div className="text-red-500">{historyError}</div>
+                  ) : leaseHistory.length === 0 ? (
+                    <div className="text-gray-500">No lease history found for this property.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-left border-b">
+                            <th className="py-2 pr-4">Start Date</th>
+                            <th className="py-2 pr-4">End Date</th>
+                            <th className="py-2 pr-4">Rent</th>
+                            <th className="py-2 pr-4">Signed</th>
+                            <th className="py-2 pr-4">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leaseHistory.map((lease) => {
+                            const now = new Date();
+                            const startDate = lease.start_date ? new Date(lease.start_date) : null;
+                            const endDate = lease.end_date ? new Date(lease.end_date) : null;
+                            
+                            let isActive = false;
+                            if (startDate && endDate) {
+                              isActive = now >= startDate && now <= endDate;
+                            } else if (startDate && !endDate) {
+                              isActive = now >= startDate;
+                            }
+                            
+                            return (
+                              <tr key={lease.id} className="border-b last:border-0">
+                                <td className="py-2 pr-4">{lease.start_date ? lease.start_date.slice(0, 10) : '-'}</td>
+                                <td className="py-2 pr-4">{lease.end_date ? lease.end_date.slice(0, 10) : '-'}</td>
+                                <td className="py-2 pr-4">${lease.rent}</td>
+                                <td className="py-2 pr-4">{lease.signed ? 'Yes' : 'No'}</td>
+                                <td className="py-2 pr-4">
+                                  <Badge 
+                                    variant={isActive ? "default" : "secondary"}
+                                    className={isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}
+                                  >
+                                    {isActive ? 'Active' : 'Inactive'}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+              </div>
+            )}
 
             {/* Landlord Contact */}
             <Card className="p-6">
@@ -234,7 +356,7 @@ const TenantMyHouse = () => {
                   <Calendar className="w-4 h-4 mr-2" />
                   Schedule Inspection
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate(`/tenant/renew-lease/${currentRental.id}`)}>
                   <User className="w-4 h-4 mr-2" />
                   Lease Renewal
                 </Button>

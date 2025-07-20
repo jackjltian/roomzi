@@ -199,26 +199,73 @@ export const getTenantListings = async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log("Fetching listings for tenant ID:", id);
 
+
+    // Fetch listings for the tenant, including landlord_profiles and leases
     const listings = await prisma.listings.findMany({
       where: { 
         tenant_id: id,
         available: false // Only show occupied properties
       },
+      include: {
+        landlord_profiles: {
+          select: {
+            full_name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        leases: {
+          where: {
+            tenant_id: id,
+          },
+          orderBy: { created_at: "desc" },
+          take: 1, // Get the most recent lease
+        },
+      },
       orderBy: { created_at: "desc" },
     });
 
-    console.log("Found listings:", listings.length, "for tenant:", id);
-
-    // Convert BigInt to string for JSON serialization
-    const responseData = listings.map(listing => ({
-      ...listing,
-      id: listing.id.toString(),
-    }));
+    // Process listings with lease data and landlord contact info
+    const listingsWithLeaseDates = listings.map((listing) => {
+      // Get the most recent lease (already included in the query)
+      const lease = listing.leases[0];
+      
+      // Parse JSON fields if they're strings
+      const images = Array.isArray(listing.images)
+        ? listing.images
+        : (typeof listing.images === 'string' && listing.images.trim().startsWith('[')
+            ? JSON.parse(listing.images)
+            : []);
+            
+      const amenities = Array.isArray(listing.amenities)
+        ? listing.amenities
+        : (typeof listing.amenities === 'string' && listing.amenities.trim().startsWith('[')
+            ? JSON.parse(listing.amenities)
+            : []);
+            
+      const house_rules = Array.isArray(listing.house_rules)
+        ? listing.house_rules
+        : (typeof listing.house_rules === 'string' && listing.house_rules.trim().startsWith('[')
+            ? JSON.parse(listing.house_rules)
+            : (listing.house_rules ? [listing.house_rules] : []));
+      
+      return {
+        ...listing,
+        id: listing.id.toString(),
+        images,
+        amenities,
+        house_rules,
+        lease_start: lease?.start_date ? lease.start_date.toISOString().split('T')[0] : "N/A",
+        lease_end: lease?.end_date ? lease.end_date.toISOString().split('T')[0] : "N/A",
+        landlord_name: listing.landlord_profiles?.full_name || listing.landlord_name || "N/A",
+        landlord_email: listing.landlord_profiles?.email || "N/A",
+        landlord_phone: listing.landlord_profiles?.phone || listing.landlord_phone || "N/A",
+      };
+    });
 
     res.json(
-      successResponse(responseData, "Tenant listings retrieved successfully")
+      successResponse(listingsWithLeaseDates, "Tenant listings retrieved successfully")
     );
   } catch (error) {
     console.error("Error fetching tenant listings:", error);
