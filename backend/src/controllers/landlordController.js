@@ -91,6 +91,15 @@ export const createLandlord = async (req, res) => {
     const { id, full_name, email, phone, image_url, address, documents } =
       req.body;
 
+    // Validate required fields
+    if (!id || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'id and email are required',
+        statusCode: 400,
+      });
+    }
+
     // Use upsert to handle both create and update scenarios
     const landlord = await prisma.landlord_profiles.upsert({
       where: { id },
