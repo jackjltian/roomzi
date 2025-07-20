@@ -28,7 +28,6 @@ const TenantMyHouse = () => {
   useEffect(() => {
     // Using demo data instead of API call
     // Uncomment the code below if you want to fetch real data from the API
-    /*
     if (!tenantId) return;
     
     // Fetch tenant's rental data
@@ -60,7 +59,6 @@ const TenantMyHouse = () => {
         setHasRental(false);
         setLoading(false);
       });
-    */
   }, [tenantId]);
 
   const handlePaymentsClick = () => {
@@ -235,7 +233,7 @@ const TenantMyHouse = () => {
                   <Calendar className="w-4 h-4 mr-2" />
                   Schedule Inspection
                 </Button>
-                <Button variant="outline" className="justify-start">
+                <Button variant="outline" className="justify-start" onClick={() => navigate(`/tenant/renew-lease/${currentRental.id}`)}>
                   <User className="w-4 h-4 mr-2" />
                   Lease Renewal
                 </Button>
