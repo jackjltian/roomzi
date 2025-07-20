@@ -105,7 +105,7 @@ export const checkHasLease = async (req, res) => {
   }
 };
 
-export const getLease = async (req, res) => {
+export const getLeaseWithDocument = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -219,16 +219,20 @@ export const uploadSignedLease = async (req, res) => {
     if (uploadError) {
       throw uploadError;
     }
-    // Get public URL
-    const { data: publicUrlData } = supabase.storage.from('leases').getPublicUrl(fileName);
-    const publicUrl = publicUrlData?.publicUrl;
-    if (!publicUrl) {
-      throw new Error("Could not get file URL");
+    // Create signed URL for document
+    const { data: urlData, error: urlError } = await supabase
+      .storage
+      .from("leases")
+      .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year expiry
+
+    if (urlError || !urlData?.signedUrl) {
+      throw new Error("Could not generate signed URL for document");
     }
+
     // Update lease record
     const updatedLease = await prisma.leases.update({
       where: { id: leaseId },
-      data: { document: publicUrl, signed: true },
+      data: { document: urlData.signedUrl, signed: true },
     });
 
     // Also update the corresponding listing: set tenant_id and available = false
