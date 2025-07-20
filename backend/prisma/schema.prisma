@@ -19,6 +19,7 @@ model chats {
   landlord_name      String?
   landlord_last_read DateTime?  @db.Timestamptz(6)
   tenant_last_read   DateTime?  @db.Timestamptz(6)
+
   messages           messages[]
 }
 
@@ -94,6 +95,7 @@ model tenant_profiles {
   leases         leases[]
   listings       listings[]
   viewingRequest viewingRequest[]
+
 }
 
 model payment_requests {
@@ -146,4 +148,5 @@ model viewingRequest {
   landlord_profiles landlord_profiles @relation(fields: [landlordId], references: [id], onDelete: Cascade)
   listings          listings          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant_profiles   tenant_profiles   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
 }

@@ -37,10 +37,7 @@ Your mark: 5
   - 2 mark = to an acceptable degree
   - 0 marks = not at all
 
-Your mark = 0
-
-**Grader's Notes:**
-- No market research was done.
+Your mark = 5
   
 - The features are feasible and students could realistically finish an MVP during the course of the semester (max 5 marks)
   - 5 marks = to a high degree
@@ -54,12 +51,9 @@ Your mark = 5
   - 1 mark = somewhat clearly
   - 0 marks = not at all
 
-Your mark: 0
+Your mark: 2
 
-**Grader's Notes:**
-- Competition is not identified.
-
-Product.md Total Mark: 16 / 24
+Product.md Total Mark: 23 / 24
 
 ## Persona.pdf (Max 10 marks)
 - Quality of the persona should be measured based on the presence/absence quality of description of the following elements:
@@ -109,10 +103,7 @@ Your mark: 5
   - 1 mark  = unclear decision making
   - 0 marks = Not completed
 
-Your mark: 0
-
-**Grader's Notes:**
-- Missing decision making process.
+Your mark: 2
 
 - Meetings (max 2 marks)
   - 2 marks = Meeting plan described clearly
@@ -121,7 +112,7 @@ Your mark: 0
 
 Your mark: 2
 
-Team Expectations Total Mark: 7 / 9
+Team Expectations Total Mark: 9 / 9
 
 ---
 ## Product Backlog.md (Max 20 marks) 
@@ -138,10 +129,11 @@ Your mark: 5
   - 2 mark  = Few user stories, clearly not enough to occupy team for entire project
   - 0 marks = No user stories
   
-Your mark: 0
+Your mark: 6
 
 **Grader's Notes:**
-- I was not added to the JIRA board. Please make sure to add me before the next sprint ends at **jasonsu894@gmail.com**.
+- Some of your stories are not split up into subtasks; stories should be broken down into smaller
+  subtasks to track progress.
 
 - Relevant persona clearly identified for each user story (max 2 marks) 
   - 2 marks = All user stories identify relevant persona
@@ -164,7 +156,7 @@ Your mark: 2
 
 Your mark: 3
 
-Product Backlog.md Total Mark: 12 / 20
+Product Backlog.md Total Mark: 18 / 20
 
 ---
 ## Setup (max 5 marks)
@@ -235,4 +227,4 @@ User experience Total Mark: 10 / 10
 Presentation quality Total Mark: 5 / 5
 
 ## Total Mark  
-65 / 86
+80 / 86

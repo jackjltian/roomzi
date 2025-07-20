@@ -407,6 +407,7 @@ export const getPayments = async (req, res) => {
       return res.status(400).json({
         error: "Invalid listing ID provided.",
       });
+
     }
 
     const listingId = BigInt(id);

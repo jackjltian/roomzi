@@ -307,9 +307,9 @@ const CreateListing = () => {
             </div>
           </Card>
 
-          {/* Pricing & Lease */}
+          {/* Pricing */}
           <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-6">Pricing & Lease Terms</h2>
+            <h2 className="text-xl font-semibold mb-6">Pricing</h2>
             <div className="grid md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="price">Monthly Rent ($)</Label>

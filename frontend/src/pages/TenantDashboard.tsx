@@ -10,7 +10,7 @@ import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
-import { getApiBaseUrl } from '@/utils/api';
+import { getApiBaseUrl, getLeasesForTenant } from '@/utils/api';
 import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
 
 // Helper to safely parse JSON fields
@@ -51,6 +51,10 @@ const TenantDashboard = () => {
   const [viewings, setViewings] = useState([]);
   const [loadingViewings, setLoadingViewings] = useState(true);
 
+  // Add mock lease state
+  const [hasNewLease, setHasNewLease] = useState(false); // now real data
+  const [leaseId, setLeaseId] = useState<string | null>(null);
+
   // Debug: Log current user info
   useEffect(() => {
     console.log('🔍 Current user info:', {
@@ -71,6 +75,14 @@ const TenantDashboard = () => {
   useEffect(() => {
     if (location.state && location.state.profileUpdated) {
       fetchProfile();
+      // Clear the state so it doesn't refetch on every render
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  useEffect(() => {
+    if (location.state && location.state.leaseSigned) {
+      setHasNewLease(false);
       // Clear the state so it doesn't refetch on every render
       window.history.replaceState({}, document.title);
     }
@@ -114,6 +126,29 @@ const TenantDashboard = () => {
 
   useEffect(() => {
     fetchViewings();
+
+  useEffect(() => {
+    // Fetch leases for the current tenant
+    const fetchLeases = async () => {
+      if (!user?.id) return;
+      try {
+        const response = await getLeasesForTenant(user.id);
+        if (response.success && Array.isArray(response.data)) {
+          const unsignedLease = response.data.find((lease: any) => lease.signed === false);
+          if (unsignedLease) {
+            setHasNewLease(true);
+            setLeaseId(unsignedLease.id);
+          } else {
+            setHasNewLease(false);
+            setLeaseId(null);
+          }
+        }
+      } catch (err) {
+        setHasNewLease(false);
+        setLeaseId(null);
+      }
+    };
+    fetchLeases();
   }, [user]);
 
   const fetchProperties = async () => {
@@ -228,6 +263,19 @@ const TenantDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+      {/* Lease Notification Banner */}
+      {hasNewLease && leaseId && (
+        <div
+          className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 cursor-pointer flex items-center justify-between"
+          onClick={() => navigate(`/tenant/lease/${leaseId}`)}
+        >
+          <span>📄 You have a new lease to review and sign!</span>
+          <button
+            className="ml-4 text-yellow-700 underline text-sm"
+            onClick={e => { e.stopPropagation(); setHasNewLease(false); }}
+          >Dismiss</button>
+        </div>
+      )}
       {/* Enhanced Header */}
       <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
