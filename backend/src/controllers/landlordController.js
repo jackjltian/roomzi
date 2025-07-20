@@ -367,8 +367,8 @@ export const getPayments = async (req, res) => {
         console.error('Error in getPayments:', err);
         console.error('Error stack:', err.stack);
         res.status(500).json({
-            error: 'An error occurred while getting the payments.',
-            details: err.message
+          error: 'An error occurred while getting the payments.',
+          details: err.message,
         });
     }
 }

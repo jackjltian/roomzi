@@ -21,7 +21,7 @@ const TenantMyHouse = () => {
   const [historyLoading, setHistoryLoading] = useReactState(false);
   const [historyError, setHistoryError] = useReactState<string | null>(null);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
     

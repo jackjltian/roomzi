@@ -1,6 +1,9 @@
 import express from "express";
 import multer from "multer";
 import {
+  createLease,
+  checkHasLease,
+  getLease,
   getLeasesForTenant,
   getLeaseById,
   uploadSignedLease,
@@ -9,6 +12,15 @@ import {
 
 const router = express.Router();
 const upload = multer(); // For handling multipart/form-data
+
+// POST /api/leases - Create new lease
+router.post("/", createLease);
+
+// GET /api/leases/:id - Get lease by id
+router.get("/:id", getLease);
+
+// GET /api/leases/:listingId/:tenantId - Get lease ID, if it exists
+router.get("/:listingId/:tenantId", checkHasLease);
 
 // GET /api/leases/history?tenantId=...&listingId=... - Get lease history for a tenant and property
 router.get("/history", getLeaseHistoryForTenantAndListing);

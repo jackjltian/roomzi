@@ -30,6 +30,7 @@ router.use("/chats", chatRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/leases", leaseRoutes);
 router.use("/landlord", landlordRouter);
+router.use("/leases", leaseRoutes);
 
 landlordRouter.post('/create-listing', createListing);
 landlordRouter.get('/get-listings/:id', getListings);
