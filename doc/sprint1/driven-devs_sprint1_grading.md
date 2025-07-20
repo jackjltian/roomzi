@@ -55,7 +55,7 @@ Note (for TAs): a completed sprint may be hidden from the Backlog/Board. - You n
 
 Deduct 2/2.5 marks for each criteria violated.
 
-Backlog Management Total Mark: 14 / 20
+Backlog Management Total Mark: 16.5 / 20
 
 **Grader's Notes:**
 
@@ -129,7 +129,7 @@ Your Mark: 5
   - In the future, you can place teh design document as a seperate file so it's not as blurry
   - Missing proper graphics symbols in the architecture diagram as well
 
-System Design Total Mark: 11 / 15
+System Design Total Mark: 12 / 15
 
 ---
 
@@ -169,4 +169,4 @@ Your Mark: 17 / 17
 
 ## Total Mark
 
-82.6 / 93
+86.1 / 93
