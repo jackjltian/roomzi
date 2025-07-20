@@ -285,7 +285,7 @@ const LandlordMatches = () => {
 
   const handleViewLease = async (leaseId: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/leases/document/${leaseId}`, {
+      const response = await fetch(`http://localhost:3001/api/leases/${leaseId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -295,7 +295,15 @@ const LandlordMatches = () => {
       
       if (response.ok) {
         const data = await response.json();
-        window.open(data.url, '_blank');
+        if (data.lease && data.lease.document) {
+          window.open(data.lease.document, '_blank');
+        } else {
+          toast({
+            title: "Error",
+            description: "No document URL found.",
+            variant: "destructive",
+          });
+        }
       } else {
         toast({
           title: "Error",
@@ -458,9 +466,16 @@ const LandlordMatches = () => {
                         <h3 className="text-lg font-semibold text-gray-900 truncate">
                           {match.propertyTitle}
                         </h3>
-                        {match.unread && (
-                          <Badge className="bg-roomzi-blue text-white">New</Badge>
-                        )}
+                        <div className="flex space-x-2">
+                          {match.unread && (
+                            <Badge className="bg-roomzi-blue text-white">New</Badge>
+                          )}
+                          {hasLease[match.id] && hasLease[match.id].exists && (
+                            hasLease[match.id].signed ?
+                            <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge> :
+                            <Badge className="bg-yellow-500 hover:bg-yellow-400">Lease Not Signed</Badge>
+                          )} 
+                        </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         <User className="w-4 h-4 inline mr-1" />
@@ -487,6 +502,25 @@ const LandlordMatches = () => {
                       <Home className="w-4 h-4 mr-2" />
                       View Property
                     </Button>
+                    {hasLease[match.id] && hasLease[match.id].exists ? (
+                      <Button
+                        size="sm"
+                        className="roomzi-gradient-inverted"
+                        onClick={() => handleViewLease(hasLease[match.id].leaseId)}
+                      >
+                        <SquareArrowOutUpRight className="w-4 h-4 mr-2" />
+                        View Lease
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        className="roomzi-gradient-inverted"
+                        onClick={() => handleCreateLease(match)}
+                      >
+                        <FilePen className="w-4 h-4 mr-2" />
+                        Create Lease
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>

@@ -29,6 +29,18 @@ export const createLease = async (req, res) => {
       });
     }
 
+    // Create a signed URL for the document
+    const { data, error } = await supabase
+      .storage
+      .from("leases")
+      .createSignedUrl(document, 60 * 60 * 24 * 365); // 1 year expiry
+
+    if (error) {
+      return res.status(500).json({
+        error: "Failed to create signed URL for document",
+      });
+    }
+
     const lease = await prisma.leases.create({
       data: {
         tenant_id: tenantId,
@@ -36,7 +48,7 @@ export const createLease = async (req, res) => {
         start_date: new Date(startDate).toISOString(),
         end_date: new Date(endDate).toISOString(),
         rent: parseFloat(rent),
-        document,
+        document: data.signedUrl,
         signed,
       },
     });
@@ -93,34 +105,63 @@ export const checkHasLease = async (req, res) => {
   }
 };
 
-export const getDocument = async (req, res) => {
-    try {
-        const leaseId = req.params.leaseId;
+export const getLease = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-        const lease = await prisma.leases.findUnique({
-            where: { id: leaseId },
-        });
+    const lease = await prisma.leases.findUnique({
+      where: { id: id },
+    });
 
-        if (!lease || !lease.document) {
-            return res.status(404).json({ error: "Lease or document not found" });
-        }
-
-        // lease.document should be the file path ("documents/[filename].pdf")
-        const { data, error } = await supabase
-            .storage
-            .from("leases")
-            .createSignedUrl(lease.document, 60 * 60); // 1 hour expiry
-
-        if (error) {
-            return res.status(500).json({ error: "Failed to create document URL" });
-        }
-
-        return res.json({ url: data.signedUrl });
-    } catch (err) {
-        console.error('Error getting document:', err);
-        res.status(500).json({
-            error: 'An error occurred while getting the document.',
-            details: err.message,
-        })
+    if (!lease) {
+      return res.status(404).json({ error: "Lease not found" });
     }
+
+    const responseData = {
+      lease: {
+        ...lease,
+        listing_id: lease.listing_id.toString(),
+      }
+    };
+
+    res.json(responseData);
+  } catch (err) {
+    console.error('Error getting lease:', err);
+    res.status(500).json({
+      error: 'An error occurred while getting the lease.',
+      details: err.message,
+    });
+  }
 }
+
+// export const getDocument = async (req, res) => {
+//     try {
+//         const leaseId = req.params.leaseId;
+
+//         const lease = await prisma.leases.findUnique({
+//             where: { id: leaseId },
+//         });
+
+//         if (!lease || !lease.document) {
+//             return res.status(404).json({ error: "Lease or document not found" });
+//         }
+
+//         // lease.document should be the file path ("documents/[filename].pdf")
+//         const { data, error } = await supabase
+//             .storage
+//             .from("leases")
+//             .createSignedUrl(lease.document, 60 * 60); // 1 hour expiry
+
+//         if (error) {
+//             return res.status(500).json({ error: "Failed to create document URL" });
+//         }
+
+//         return res.json({ url: data.signedUrl });
+//     } catch (err) {
+//         console.error('Error getting document:', err);
+//         res.status(500).json({
+//             error: 'An error occurred while getting the document.',
+//             details: err.message,
+//         })
+//     }
+// }
