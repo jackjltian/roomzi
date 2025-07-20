@@ -133,35 +133,3 @@ export const getLease = async (req, res) => {
     });
   }
 }
-
-// export const getDocument = async (req, res) => {
-//     try {
-//         const leaseId = req.params.leaseId;
-
-//         const lease = await prisma.leases.findUnique({
-//             where: { id: leaseId },
-//         });
-
-//         if (!lease || !lease.document) {
-//             return res.status(404).json({ error: "Lease or document not found" });
-//         }
-
-//         // lease.document should be the file path ("documents/[filename].pdf")
-//         const { data, error } = await supabase
-//             .storage
-//             .from("leases")
-//             .createSignedUrl(lease.document, 60 * 60); // 1 hour expiry
-
-//         if (error) {
-//             return res.status(500).json({ error: "Failed to create document URL" });
-//         }
-
-//         return res.json({ url: data.signedUrl });
-//     } catch (err) {
-//         console.error('Error getting document:', err);
-//         res.status(500).json({
-//             error: 'An error occurred while getting the document.',
-//             details: err.message,
-//         })
-//     }
-// }

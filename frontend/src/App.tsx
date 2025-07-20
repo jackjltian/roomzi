@@ -106,6 +106,7 @@ const App = () => (
                       <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
                       <Route path="maintenance/:listingId" element={<TenantMaintenanceRequest />} />
+                      <Route path="renew-lease/:listingId" element={<RenewLease />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
