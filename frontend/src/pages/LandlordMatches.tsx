@@ -295,8 +295,8 @@ const LandlordMatches = () => {
       
       if (response.ok) {
         const data = await response.json();
-        if (data.lease && data.lease.document) {
-          window.open(data.lease.document, '_blank');
+        if (data.success && data.data && data.data.document) {
+          window.open(data.data.document, '_blank');
         } else {
           toast({
             title: "Error",
@@ -313,6 +313,11 @@ const LandlordMatches = () => {
       }
     } catch (error) {
       console.error("Error fetching lease document:", error);
+      toast({
+        title: "Error",
+        description: "Could not fetch lease document.",
+        variant: "destructive",
+      });
     }
   }
 
