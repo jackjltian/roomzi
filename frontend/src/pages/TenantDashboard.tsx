@@ -126,6 +126,7 @@ const TenantDashboard = () => {
 
   useEffect(() => {
     fetchViewings();
+  }, [user]);
 
   useEffect(() => {
     // Fetch leases for the current tenant
