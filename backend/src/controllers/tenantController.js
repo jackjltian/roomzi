@@ -119,7 +119,8 @@ export const getTenantById = async (req, res) => {
 // Create new tenant (with upsert functionality)
 export const createTenant = async (req, res) => {
   try {
-    const { id, full_name, email, phone, image_url, address } = req.body;
+    const { id, full_name, email, phone, image_url, address, documents } =
+      req.body;
     // Use upsert to handle both create and update scenarios
     const tenant = await prisma.tenant_profiles.upsert({
       where: { id },
@@ -129,6 +130,9 @@ export const createTenant = async (req, res) => {
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
+        ...(documents !== undefined && {
+          documents: { set: normalizeDocuments(documents) },
+        }),
         updated_at: new Date(),
       },
       create: {
@@ -138,6 +142,7 @@ export const createTenant = async (req, res) => {
         phone,
         image_url,
         address,
+        documents: { set: normalizeDocuments(documents || []) },
       },
     });
     const responseData = convertBigIntToString(tenant);
@@ -159,7 +164,10 @@ export const createTenant = async (req, res) => {
 export const updateTenant = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, email, phone, image_url, address } = req.body;
+    const { full_name, email, phone, image_url, address, documents } = req.body;
+
+    console.log("Updating tenant profile:", { id, documents });
+
     // Update tenant profile
     const updateData = {
       ...(full_name && { full_name }),
@@ -169,10 +177,23 @@ export const updateTenant = async (req, res) => {
       ...(address !== undefined && { address }),
       updated_at: new Date(),
     };
+
+    // Handle documents separately to avoid issues with normalization
+    if (documents !== undefined) {
+      console.log("Normalizing documents:", documents);
+      const normalizedDocuments = normalizeDocuments(documents);
+      console.log("Normalized documents:", normalizedDocuments);
+      // Use set operation for JSON array to avoid Prisma validation issues
+      updateData.documents = {
+        set: normalizedDocuments,
+      };
+    }
+
     const tenant = await prisma.tenant_profiles.update({
       where: { id },
       data: updateData,
     });
+
     // Real-time sync: update landlord profile if exists
     const landlordProfile = await prisma.landlord_profiles.findUnique({
       where: { id },

@@ -310,7 +310,7 @@ const TenantDashboard = () => {
               {approvedRequests.map((v) => (
                 <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
                   <div>
-                    <div className="font-medium">{v.listing?.title || 'Property'}</div>
+                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
                     <div className="text-sm text-gray-600">
                       Requested: {formatDateSafe(v.requestedDateTime)}
                     </div>
@@ -328,7 +328,7 @@ const TenantDashboard = () => {
               {otherRequests.map((v) => (
                 <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
                   <div>
-                    <div className="font-medium">{v.listing?.title || 'Property'}</div>
+                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
                     <div className="text-sm text-gray-600">
                       Requested: {formatDateSafe(v.requestedDateTime)}
                     </div>
