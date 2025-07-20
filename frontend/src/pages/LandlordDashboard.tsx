@@ -104,15 +104,6 @@ const LandlordDashboard = () => {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate('/landlord/chats')}
-                className="hover:bg-blue-50"
-              >
-                <MessageCircle className="w-4 h-4 mr-2" />
-                Messages
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
                 onClick={() => signOut()}
                 className="hover:bg-red-50 text-red-600"
               >
@@ -281,7 +272,7 @@ const LandlordDashboard = () => {
             variant="ghost" 
             size="sm" 
             className="flex-col h-auto py-2"
-            onClick={() => {/* Navigate to matches */}}
+            onClick={() => navigate('/landlord/matches')}
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>

@@ -11,6 +11,7 @@ import TenantProfile from "./pages/TenantProfile";
 import TenantMatches from "./pages/TenantMatches";
 import TenantMyHouse from "./pages/TenantMyHouse";
 import LandlordDashboard from "./pages/LandlordDashboard";
+import LandlordMatches from "./pages/LandlordMatches";
 import LandlordProfile from "./pages/LandlordProfile";
 import PropertyDetails from "./pages/PropertyDetails";
 import CreateListing from "./pages/CreateListing";
@@ -32,6 +33,8 @@ import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
 import TenantMaintenanceRequest from "./pages/TenantMaintenanceRequest";
 import LandlordMaintenanceRequests from "./pages/LandlordMaintenanceRequests";
+import TenantLease from './pages/TenantLease';
+import TenantLeasedProperties from "./pages/TenantLeasedProperties";
 import RenewLease from "./pages/RenewLease";
 import LandlordLeaseAgreement from "./pages/LandlordLeaseAgreement";
 
@@ -102,12 +105,13 @@ const App = () => (
                       <Route path="/" element={<TenantDashboard />} />
                       <Route path="profile" element={<TenantProfile />} />
                       <Route path="matches" element={<TenantMatches />} />
-                      <Route path="my-house" element={<TenantMyHouse />} />
+                      <Route path="my-house" element={<TenantLeasedProperties />} />
+                      <Route path="my-house/:listingId" element={<TenantMyHouse />} />
                       <Route path="financial-account" element={<FinancialAccount />} />
                       <Route path="payments/:listingId" element={<PaymentHistory/>} />
                       <Route path="payments" element={<Payments />} />
                       <Route path="maintenance/:listingId" element={<TenantMaintenanceRequest />} />
-                      <Route path="renew-lease/:listingId" element={<RenewLease />} />
+                      <Route path="lease/:leaseId" element={<TenantLease />} />
                     </Routes>
                   </RoleProtectedRoute>
                 } 
@@ -119,6 +123,7 @@ const App = () => (
                     <Routes>
                       <Route path="/" element={<LandlordDashboard />} />
                       <Route path="profile" element={<LandlordProfile />} />
+                      <Route path="matches" element={<LandlordMatches />} />
                       <Route path="chats" element={<LandlordChats />} />
                       <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
                       <Route path="maintenance-requests" element={<LandlordMaintenanceRequests />} />

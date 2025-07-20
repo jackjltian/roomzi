@@ -2,7 +2,29 @@ import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
 import { getIO } from "../config/socket.js";
 
-// Get all chats for a user (tenant or landlord)
+// Mark messages as read for a specific user
+export const markChatAsRead = async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { userId, userType } = req.body; // userType: 'tenant' or 'landlord'
+
+    const updateField = userType === 'tenant' ? 'tenant_last_read' : 'landlord_last_read';
+
+    const updatedChat = await prisma.chats.update({
+      where: { id: chatId },
+      data: {
+        [updateField]: new Date(),
+      },
+    });
+
+    res.json(successResponse(updatedChat, "Chat marked as read"));
+  } catch (error) {
+    console.error("Error marking chat as read:", error);
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Get all chats for a user (tenant or landlord) - Updated to include unread counts
 export const getUserChats = async (req, res) => {
   try {
     const { userId, userType } = req.params; // userType: 'tenant' or 'landlord'
@@ -22,20 +44,44 @@ export const getUserChats = async (req, res) => {
       orderBy: { created_at: "desc" },
     });
 
-    // Manually fetch current names from related tables
+    // Manually fetch current names from related tables and calculate unread counts
     const chatsWithCurrentNames = await Promise.all(
-      chats.map(async (chat) => {
-        // Fetch tenant profile
-        const tenantProfile = await prisma.tenant_profiles.findUnique({
-          where: { id: chat.tenant_id },
-          select: { full_name: true, email: true }
-        });
+      chats.map(async (chat, index) => {
+        // Helper function to validate UUIDs
+        const isValidUUID = (uuid) => {
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          return uuidRegex.test(uuid);
+        };
 
-        // Fetch landlord profile
-        const landlordProfile = await prisma.landlord_profiles.findUnique({
-          where: { id: chat.landlord_id },
-          select: { full_name: true, email: true }
-        });
+        // Fetch tenant profile (only if valid UUID)
+        let tenantProfile = null;
+        if (isValidUUID(chat.tenant_id)) {
+          try {
+            tenantProfile = await prisma.tenant_profiles.findUnique({
+              where: { id: chat.tenant_id },
+              select: { full_name: true, email: true }
+            });
+          } catch (error) {
+            console.error(`Error fetching tenant profile for ${chat.tenant_id}:`, error.message);
+          }
+        } else {
+          console.error(`Skipping tenant profile fetch - invalid UUID: ${chat.tenant_id}`);
+        }
+
+        // Fetch landlord profile (only if valid UUID)
+        let landlordProfile = null;
+        if (isValidUUID(chat.landlord_id)) {
+          try {
+            landlordProfile = await prisma.landlord_profiles.findUnique({
+              where: { id: chat.landlord_id },
+              select: { full_name: true, email: true }
+            });
+          } catch (error) {
+            console.error(`Error fetching landlord profile for ${chat.landlord_id}:`, error.message);
+          }
+        } else {
+          console.error(`Skipping landlord profile fetch - invalid UUID: ${chat.landlord_id}`);
+        }
 
         // Fetch listing details
         let listing = null;
@@ -54,8 +100,39 @@ export const getUserChats = async (req, res) => {
               }
             });
           } catch (error) {
-            console.log(`Could not find listing with ID: ${chat.property_id}`);
+            console.error(`Could not find listing with ID: ${chat.property_id}`);
           }
+        }
+
+        // Calculate unread message count
+        const lastReadTime = userType === 'tenant' ? chat.tenant_last_read : chat.landlord_last_read;
+        let unreadCount = 0;
+        
+        if (lastReadTime) {
+          // Count messages after the last read time
+          const unreadMessages = await prisma.messages.count({
+            where: {
+              chat_id: chat.id,
+              created_at: {
+                gt: lastReadTime
+              },
+              sender_id: {
+                not: userId // Don't count user's own messages
+              }
+            }
+          });
+          unreadCount = unreadMessages;
+        } else {
+          // If never read, count all messages from the other user
+          const totalMessages = await prisma.messages.count({
+            where: {
+              chat_id: chat.id,
+              sender_id: {
+                not: userId
+              }
+            }
+          });
+          unreadCount = totalMessages;
         }
 
         return {
@@ -63,6 +140,7 @@ export const getUserChats = async (req, res) => {
           tenantName: tenantProfile?.full_name || chat.tenant_name || 'Unknown Tenant',
           propertyTitle: listing?.title || chat.property_name || 'Unknown Property',
           landlord_name: landlordProfile?.full_name || chat.landlord_name || 'Unknown Landlord',
+          unreadCount,
           property_details: listing ? {
             address: listing.address,
             city: listing.city,
@@ -129,7 +207,7 @@ export const getChatById = async (req, res) => {
           }
         });
       } catch (error) {
-        console.log(`Could not find listing with ID: ${chat.property_id}`);
+        console.error(`Could not find listing with ID: ${chat.property_id}`);
       }
     }
 
@@ -157,7 +235,6 @@ export const getChatById = async (req, res) => {
 
 // Create a new chat
 export const createChat = async (req, res) => {
-  console.log('--- createChat endpoint called ---');
   try {
     const { tenant_id, landlord_id, property_id } = req.body;
 
@@ -192,9 +269,8 @@ export const createChat = async (req, res) => {
           where: { id: BigInt(property_id) },
           select: { title: true }
         });
-        console.log('Listing lookup result:', listing);
       } catch (error) {
-        console.log(`Could not find listing with ID: ${property_id}`, error);
+        console.error(`Could not find listing with ID: ${property_id}`, error);
       }
     }
 

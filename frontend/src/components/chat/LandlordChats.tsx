@@ -5,8 +5,10 @@ import { chatApi } from '@/api/chat';
 import { ChatWindow } from './ChatWindow';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
+import { Badge } from '../ui/badge';
 import { ArrowLeft, MessageCircle, Home } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch, getApiBaseUrl } from '@/utils/api';
 
 interface Chat {
   id: string;
@@ -20,6 +22,8 @@ interface Chat {
   tenant_name?: string;
   lastMessage?: string;
   propertyImage?: string;
+  unread?: boolean;
+  timestamp?: number;
 }
 
 export function LandlordChats() {
@@ -43,9 +47,81 @@ export function LandlordChats() {
     try {
       const landlordId = user?.id;
       const data = await chatApi.getChatRooms(landlordId);
-      const chats = Array.isArray(data) ? data : data.data;
-      setChats(chats);
+      const rawChats = Array.isArray(data) ? data : data.data;
+      
+      // Filter to only show chats where the current user is the landlord
+      const landlordChats = rawChats.filter((chat: any) => chat.landlord_id === user?.id);
+      
+      // Transform and fetch latest messages for each chat
+      const transformedChats: Chat[] = await Promise.all(landlordChats.map(async (chat: any) => {
+        let lastMessage = '';
+        let timestamp = new Date(chat.created_at).getTime();
+        let unread = false;
+        
+        try {
+          const messagesResponse = await apiFetch(`${getApiBaseUrl()}/api/chat/rooms/${chat.id}/messages`);
+          if (messagesResponse && Array.isArray(messagesResponse) && messagesResponse.length > 0) {
+            const latestMessage = messagesResponse[messagesResponse.length - 1];
+            
+            // Check if message is unread (from tenant and recent)
+            if (latestMessage.sender_id !== user?.id && latestMessage.sender_type === 'tenant') {
+              const messageTime = new Date(latestMessage.created_at);
+              const now = new Date();
+              const hoursSinceMessage = (now.getTime() - messageTime.getTime()) / (1000 * 60 * 60);
+              
+              // Consider message unread if it's from tenant and less than 24 hours old
+              unread = hoursSinceMessage < 24;
+            }
+            
+            // Parse message content to determine type and display appropriate preview
+            let messageContent = latestMessage.content;
+            try {
+              const parsed = JSON.parse(latestMessage.content);
+              if (parsed && typeof parsed === 'object') {
+                if (parsed.url && parsed.name) {
+                  // This is a file or image message
+                  if (parsed.type && parsed.type.startsWith('image/')) {
+                    messageContent = "📷 Image";
+                  } else {
+                    messageContent = "📎 File";
+                  }
+                }
+              }
+            } catch (e) {
+              // If parsing fails, it's a regular text message
+              messageContent = latestMessage.content;
+            }
+            
+            lastMessage = messageContent;
+            timestamp = new Date(latestMessage.created_at).getTime();
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch messages for chat ${chat.id}:`, error);
+        }
+
+        return {
+          id: chat.id,
+          tenant_id: chat.tenant_id,
+          landlord_id: chat.landlord_id,
+          property_id: chat.property_id,
+          created_at: chat.created_at,
+          property_name: chat.property_name || 'Unknown Property',
+          tenant_name: chat.tenant_name || 'Unknown Tenant',
+          lastMessage: lastMessage,
+          propertyImage: chat.propertyImage || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=300&h=200&fit=crop',
+          unread: unread,
+          timestamp: timestamp
+        };
+      }));
+      
+      // Sort chats by timestamp (most recent first)
+      transformedChats.sort((a, b) => {
+        return (b.timestamp || 0) - (a.timestamp || 0); // Most recent first
+      });
+      
+      setChats(transformedChats);
     } catch (error) {
+      console.error('Error fetching chats:', error);
       setChats([]);
     } finally {
       setLoading(false);
@@ -55,14 +131,34 @@ export function LandlordChats() {
   // Filtered and searched chats
   const filteredChats = chats.filter(chat => {
     const searchTerm = search.toLowerCase();
-    return (
-      (chat.propertyTitle?.toLowerCase().includes(searchTerm) || 
+    const matchesSearch = (
+      (chat.property_name?.toLowerCase().includes(searchTerm) || 
        `Property ${chat.property_id}`.toLowerCase().includes(searchTerm)) ||
-      (chat.tenantName?.toLowerCase().includes(searchTerm) || 
+      (chat.tenant_name?.toLowerCase().includes(searchTerm) || 
        chat.tenant_id.toLowerCase().includes(searchTerm)) ||
       (chat.lastMessage?.toLowerCase().includes(searchTerm))
     );
+    
+    // Apply unread filter if selected
+    if (filter === 'unread') {
+      return matchesSearch && chat.unread;
+    }
+    
+    return matchesSearch;
   });
+
+  const handleChatSelect = (chat: Chat) => {
+    // Mark this chat as read by updating the chats state
+    setChats(prevChats => 
+      prevChats.map(c => 
+        c.id === chat.id 
+          ? { ...c, unread: false }
+          : c
+      )
+    );
+    
+    setSelectedChat(chat);
+  };
 
   // Header
   if (selectedChat) {
@@ -117,7 +213,7 @@ export function LandlordChats() {
               </Button>
               <h1 className="text-2xl font-bold text-roomzi-blue">Messages</h1>
             </div>
-            {/* Optionally, add a badge for new/unread messages */}
+            <Badge variant="secondary">{chats.filter(c => c.unread).length} New</Badge>
           </div>
         </div>
       </header>
@@ -173,6 +269,9 @@ export function LandlordChats() {
                       <h3 className="text-lg font-semibold text-gray-900 truncate">
                         {chat.property_name}
                       </h3>
+                      {chat.unread && (
+                        <Badge variant="secondary">New</Badge>
+                      )}
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       <span className="font-medium">Tenant:</span> {chat.tenant_name}
@@ -186,7 +285,7 @@ export function LandlordChats() {
                     <Button 
                       size="sm" 
                       className="roomzi-gradient"
-                      onClick={() => setSelectedChat(chat)}
+                      onClick={() => handleChatSelect(chat)}
                     >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Reply
