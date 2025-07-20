@@ -103,6 +103,10 @@
     background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   }
 
+  .roomzi-gradient-inverted {
+    background: linear-gradient(135deg, #db9c14 0%, #f6af3b 100%);
+  }
+
   .text-roomzi-blue {
     color: #2563eb;
   }

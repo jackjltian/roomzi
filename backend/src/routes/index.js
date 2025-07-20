@@ -4,6 +4,7 @@ import tenantRoutes from "./tenantRoutes.js";
 import listingRoutes from "./listingRoutes.js";
 import chatRoutes from "./chatRoutes.js";
 import paymentRoutes from "./paymentRoutes.js";
+import leaseRoutes from "./leaseRoutes.js";
 import { createListing, getListings } from "../controllers/landlordController.js";
 
 const router = express.Router();
@@ -28,6 +29,7 @@ router.use("/listings", listingRoutes);
 router.use("/chats", chatRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/landlord", landlordRouter);
+router.use("/leases", leaseRoutes);
 
 landlordRouter.post('/create-listing', createListing);
 landlordRouter.get('/get-listings/:id', getListings);

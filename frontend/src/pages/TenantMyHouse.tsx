@@ -28,10 +28,10 @@ const TenantMyHouse = () => {
   useEffect(() => {
     // Using demo data instead of API call
     // Uncomment the code below if you want to fetch real data from the API
-    /*
+
     if (!tenantId) return;
     
-    // Fetch tenant's rental data
+    //Fetch tenant's rental data
     fetch(`http://localhost:3001/api/tenants/${tenantId}/listings`)
       .then(res => res.json())
       .then(data => {
@@ -60,7 +60,6 @@ const TenantMyHouse = () => {
         setHasRental(false);
         setLoading(false);
       });
-    */
   }, [tenantId]);
 
   const handlePaymentsClick = () => {

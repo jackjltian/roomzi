@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, MessageCircle, Home, User, X } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Home, User, X, FilePen, SquareArrowOutUpRight } from 'lucide-react';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { useAuth } from '@/context/AuthContext';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabaseClient';
 
 interface Match {
   id: string;
@@ -41,6 +44,17 @@ const LandlordMatches = () => {
     propertyId: string;
     chatRoomId: string;
   } | null>(null);
+  const [createLease, setCreateLease] = useState<Match>();
+  const [formData, setFormData] = useState({
+    listingId: '',
+    tenantId: '',
+    startDate: '',
+    endDate: '',
+    rent: '',
+    document: null as File | null,
+    signed: false,
+  });
+  const [hasLease, setHasLease] = useState<{ [matchId: string] : { exists: boolean, leaseId?: string, signed?: boolean } }>();
 
   // Fetch matches from API
   const fetchMatches = async () => {
@@ -182,6 +196,118 @@ const LandlordMatches = () => {
     navigate(`/property/${propertyId}`);
   };
 
+  useEffect(() => {
+    const checkHasLease = async () => {
+      const statuses: { [matchId: string] : { exists: boolean, leaseId?: string, signed?: boolean } } = {};
+      for (const match of matches) {
+        const response = await fetch(`http://localhost:3001/api/leases/${match.propertyId}/${match.tenantId}`);
+        const data = await response.json();
+        statuses[match.id] = data;
+      }
+      setHasLease(statuses);
+    }
+
+    checkHasLease();
+  }, [matches]);
+
+  const handleCreateLease = (match: Match) => {
+    setCreateLease(match);
+  }
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormData(prev => ({
+        ...prev,
+        document: file,
+      }));
+    }
+  }
+
+  const handleSubmitLease = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      const file = formData.document;
+      const filePath = `documents/${Date.now()}_${file.name}`;
+
+      // Upload document to Supabase Storage
+      const { error } = await supabase.storage
+        .from('leases')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (error) {
+        console.error("Error uploading lease agreemeent:", error);
+        return;
+      }
+
+      const payload = {
+        ...formData,
+        tenantId: createLease.tenantId,
+        listingId: createLease.propertyId,
+        document: filePath,
+      };
+
+      console.log('Creating listing:', payload);
+
+      const response = await fetch('http://localhost:3001/api/leases/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create lease.');
+      }
+
+      const result = await response.json();
+      console.log('Lease created successfully:', result);
+    } catch (error) {
+      console.error('Error creating lease:', error);
+    }
+
+    setCreateLease(null);
+  }
+
+  const handleViewLease = async (leaseId: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/api/leases/document/${leaseId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        window.open(data.url, '_blank');
+      } else {
+        toast({
+          title: "Error",
+          description: "Could not fetch lease document.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching lease document:", error);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
@@ -236,9 +362,16 @@ const LandlordMatches = () => {
                         <h3 className="text-lg font-semibold text-gray-900 truncate">
                           {match.propertyTitle}
                         </h3>
-                        {match.unread && (
-                          <Badge className="bg-roomzi-blue text-white">New</Badge>
-                        )}
+                        <div className="flex space-x-2">
+                          {match.unread && (
+                            <Badge className="bg-roomzi-blue text-white">New</Badge>
+                          )}
+                          {hasLease[match.id] && hasLease[match.id].exists && (
+                            hasLease[match.id].signed ?
+                            <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge> :
+                            <Badge className="bg-yellow-500 hover:bg-yellow-400">Lease Not Signed</Badge>
+                          )} 
+                        </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         <User className="w-4 h-4 inline mr-1" />
@@ -265,6 +398,25 @@ const LandlordMatches = () => {
                       <Home className="w-4 h-4 mr-2" />
                       View Property
                     </Button>
+                    {hasLease[match.id] && hasLease[match.id].exists ? (
+                      <Button
+                        size="sm"
+                        className="roomzi-gradient-inverted"
+                        onClick={() => handleViewLease(hasLease[match.id].leaseId)}
+                      >
+                        <SquareArrowOutUpRight className="w-4 h-4 mr-2" />
+                        View Lease
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        className="roomzi-gradient-inverted"
+                        onClick={() => handleCreateLease(match)}
+                      >
+                        <FilePen className="w-4 h-4 mr-2" />
+                        Create Lease
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -381,6 +533,108 @@ const LandlordMatches = () => {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Create Lease Window */}
+      {createLease && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="fixed w-full max-w-md bg-white flex justify-self-center items-center justify-center shadow-2xl">
+            <div className="grid sm-grid-rows-2 w-full h-full p-6 justify-center content-center">
+              <div className="text-center mb-8">
+                <h3 className="font-semibold text-lg text-gray-900">
+                  Create Lease
+                </h3>
+              </div>
+
+              <form onSubmit={handleSubmitLease} className="grid space-y-8 content-center">
+                <div className="flex space-x-4 items-center">
+                  <Label>Property: </Label>
+                  <h2 className="text-sm">{createLease.propertyTitle}</h2>
+                </div>
+
+                <div className="flex space-x-4 items-center">
+                  <Label>Tenant: </Label>
+                  <h2 className="text-sm">{createLease.tenantName}</h2>
+                </div>
+
+                <div className="flex space-x-4 items-center">
+                  <Label htmlFor="startDate" className="whitespace-nowrap">
+                    Start Date:
+                  </Label>
+                  <Input
+                    id="startDate"
+                    value={formData.startDate}
+                    type='date'
+                    onChange={(e) => handleInputChange('startDate', e.target.value)}
+                    required
+                  >
+                  </Input>
+                </div>
+
+                <div className="flex space-x-4 items-center">
+                  <Label htmlFor="endDate" className="whitespace-nowrap">
+                    End Date:
+                  </Label>
+                  <Input
+                    id="endDate"
+                    value={formData.endDate}
+                    type='date'
+                    onChange={(e) => handleInputChange('endDate', e.target.value)}
+                    required
+                  >
+                  </Input>
+                </div>
+
+                <div className="flex space-x-4 items-center">
+                  <Label htmlFor="rent" className="whitespace-nowrap">
+                    Rent (monthly):
+                  </Label>
+                  <Input
+                    id="rent"
+                    value={formData.rent}
+                    type='number'
+                    onChange={(e) => handleInputChange('rent', e.target.value)}
+                    required
+                  >
+                  </Input>
+                </div>
+
+                <div className="flex space-x-4 items-center">
+                  <Label htmlFor="startDate" className="whitespace-nowrap">
+                    Lease Agreement:
+                  </Label>
+                  <Input
+                    type="file"
+                    accept="pdf/*"
+                    onChange={handleUploadFile}
+                    required
+                  ></Input>
+                </div>
+                
+                <div className="space-y-2 items-center pt-2">
+                  <p className="text-xs text-gray-600">
+                    Clicking this button will send the lease to tenant {createLease.tenantName}.
+                    <br />
+                    You will be notified if the tenant accepts or rejects the lease.
+                  </p>
+                  <Button type='submit' className="roomzi-gradient-inverted w-[100%]">
+                    Create Lease
+                  </Button>
+                </div>
+              </form>
+            </div>
+
+            <div className="absolute top-0 right-0">
+              <Button 
+                variant='ghost' 
+                size='icon' 
+                onClick={() => setCreateLease(null)}
+              >
+                <X />
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
     </div>
