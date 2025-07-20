@@ -121,7 +121,7 @@ Your Mark: 6
   - 1 mark = The Architecture Diagram is present, it is not formatted well, and it is unclear what Architecture it follows.
   - 0 marks = No diagram present or the presented document does not look like a software architecture diagram
 
-Your Mark: 5
+Your Mark: 6
 
 **Grader's Notes:**
 
