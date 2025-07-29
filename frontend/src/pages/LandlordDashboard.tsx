@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench, Eye, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut, user } = useAuth();
   const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
@@ -27,9 +28,14 @@ const LandlordDashboard = () => {
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
 
-  // Get user's name from metadata or email
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
   const userId = user?.id || '';
+  const [profile, setProfile] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    location: '',
+    profilePhoto: '',
+  });
 
   // Helper to format date safely
   const formatDateSafe = (dateString) => {
@@ -52,6 +58,59 @@ const LandlordDashboard = () => {
 
   const totalIncome = properties.reduce((sum, property) => property.landlord_id === userId ? sum + property.price : sum, 0);
   const occupiedProperties = properties.filter(p => p.landlord_id === userId && !p.available).length;
+
+  // Fetch landlord profile
+  const fetchProfile = async () => {
+    if (!user) return;
+    try {
+      console.log('Fetching landlord profile for user ID:', user.id);
+      const response = await apiFetch(`${getApiBaseUrl()}/api/landlords/${user.id}`);
+      console.log('Landlord profile response:', response);
+      if (response.success && response.data) {
+        const data = response.data;
+        console.log('Landlord profile data:', data);
+        setProfile({
+          fullName: data.full_name || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          location: data.address || '',
+          profilePhoto: data.image_url || '',
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching landlord profile:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfile();
+  }, [user]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchProfile();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  useEffect(() => {
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setProfile(e.detail);
+      }
+    };
+    window.addEventListener('landlordProfileUpdated', handleProfileUpdated);
+    return () => window.removeEventListener('landlordProfileUpdated', handleProfileUpdated);
+  }, []);
+
+  useEffect(() => {
+    if (location.state && location.state.profileUpdated) {
+      fetchProfile();
+      // Clear the state so it doesn't refetch on every render
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     async function fetchProperties() {
@@ -187,7 +246,7 @@ const LandlordDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {userName}!</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {profile.fullName || 'Landlord'}!</h2>
             <p className="text-gray-600">Manage your properties and connect with tenants</p>
           </div>
         </div>

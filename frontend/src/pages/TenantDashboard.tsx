@@ -216,9 +216,12 @@ const TenantDashboard = () => {
   const fetchProfile = async () => {
     if (!user) return;
     try {
+      console.log('Fetching tenant profile for user ID:', user.id);
       const response = await apiFetch(`${getApiBaseUrl()}/api/tenants/${user.id}`);
+      console.log('Tenant profile response:', response);
       if (response.success && response.data) {
-        const data = response.data.data;
+        const data = response.data;
+        console.log('Tenant profile data:', data);
         setProfile({
           fullName: data.full_name || '',
           email: data.email || '',
@@ -228,7 +231,7 @@ const TenantDashboard = () => {
         });
       }
     } catch (err) {
-      // Optionally show a toast or log error
+      console.error('Error fetching tenant profile:', err);
     }
   };
 
@@ -336,8 +339,8 @@ const TenantDashboard = () => {
 
         {/* Enhanced Welcome Section */}
         <div className="mb-8 text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-3">Find Your Perfect Home</h2>
-          <p className="text-gray-600 text-lg">Discover amazing properties with our enhanced search and map view</p>
+          <h2 className="text-4xl font-bold text-gray-900 mb-3">Welcome, {profile.fullName || 'Tenant'}!</h2>
+          <p className="text-gray-600 text-lg">Find your perfect home with our enhanced search and map view</p>
         </div>
 
         {/* Upcoming Payment Banner */}
