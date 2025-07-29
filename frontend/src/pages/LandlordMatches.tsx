@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +30,7 @@ interface Match {
 
 const LandlordMatches = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [matches, setMatches] = useState<Match[]>([]);
@@ -157,6 +158,27 @@ const LandlordMatches = () => {
     fetchMatches();
   }, [user?.id]);
 
+  // Refresh data when component mounts or when user returns to this page
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user?.id) {
+        fetchMatches();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user?.id]);
+
+  // Refresh when returning from lease signing
+  useEffect(() => {
+    if (location.state && location.state.leaseSigned) {
+      fetchMatches();
+      // Clear the state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   const handleReply = async (match: Match) => {
     
     // Mark this chat as read in the database
@@ -200,15 +222,50 @@ const LandlordMatches = () => {
     const checkHasLease = async () => {
       const statuses: { [matchId: string] : { exists: boolean, leaseId?: string, signed?: boolean } } = {};
       for (const match of matches) {
-        const response = await fetch(`http://localhost:3001/api/leases/${match.propertyId}/${match.tenantId}`);
-        const data = await response.json();
-        statuses[match.id] = data;
+        try {
+          const response = await fetch(`http://localhost:3001/api/leases/${match.propertyId}/${match.tenantId}`);
+          const data = await response.json();
+          console.log(`Lease data for match ${match.id}:`, data);
+          statuses[match.id] = data;
+        } catch (error) {
+          console.error('Error fetching lease info:', error);
+          statuses[match.id] = { exists: false };
+        }
       }
+      console.log('All lease statuses:', statuses);
       setHasLease(statuses);
     }
 
     checkHasLease();
   }, [matches]);
+
+  // Refresh lease info when component comes into focus (e.g., when returning from lease signing)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (matches.length && user?.id) {
+        const checkHasLease = async () => {
+          const statuses: { [matchId: string] : { exists: boolean, leaseId?: string, signed?: boolean } } = {};
+          
+          for (const match of matches) {
+            try {
+              const response = await fetch(`http://localhost:3001/api/leases/${match.propertyId}/${match.tenantId}`);
+              const data = await response.json();
+              statuses[match.id] = data;
+            } catch (error) {
+              console.error('Error fetching lease info for match:', match.id, error);
+              statuses[match.id] = { exists: false };
+            }
+          }
+          
+          setHasLease(statuses);
+        };
+        checkHasLease();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [matches, user?.id]);
 
   const handleCreateLease = (match: Match) => {
     setCreateLease(match);
@@ -276,8 +333,22 @@ const LandlordMatches = () => {
 
       const result = await response.json();
       console.log('Lease created successfully:', result);
+      
+      // Show success toast
+      toast({
+        title: "Success!",
+        description: "Lease has been created and sent to the tenant.",
+        variant: "default",
+      });
     } catch (error) {
       console.error('Error creating lease:', error);
+      
+      // Show error toast
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create lease. Please try again.",
+        variant: "destructive",
+      });
     }
 
     setCreateLease(null);
@@ -380,9 +451,13 @@ const LandlordMatches = () => {
                             <Badge className="bg-roomzi-blue text-white">New</Badge>
                           )}
                           {hasLease[match.id] && hasLease[match.id].exists && (
-                            hasLease[match.id].signed ?
-                            <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge> :
-                            <Badge className="bg-yellow-500 hover:bg-yellow-400">Lease Not Signed</Badge>
+                            hasLease[match.id].signed === true ? (
+                              <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge>
+                            ) : hasLease[match.id].signed === false ? (
+                              <Badge className="bg-yellow-500 hover:bg-yellow-400">Lease Not Signed</Badge>
+                            ) : (
+                              <Badge className="bg-gray-500 hover:bg-gray-400">Lease Status Unknown</Badge>
+                            )
                           )} 
                         </div>
                       </div>
@@ -476,9 +551,13 @@ const LandlordMatches = () => {
                             <Badge className="bg-roomzi-blue text-white">New</Badge>
                           )}
                           {hasLease[match.id] && hasLease[match.id].exists && (
-                            hasLease[match.id].signed ?
-                            <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge> :
-                            <Badge className="bg-yellow-500 hover:bg-yellow-400">Lease Not Signed</Badge>
+                            hasLease[match.id].signed === true ? (
+                              <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge>
+                            ) : hasLease[match.id].signed === false ? (
+                              <Badge className="bg-yellow-500 hover:bg-yellow-400">Lease Not Signed</Badge>
+                            ) : (
+                              <Badge className="bg-gray-500 hover:bg-gray-400">Lease Status Unknown</Badge>
+                            )
                           )} 
                         </div>
                       </div>

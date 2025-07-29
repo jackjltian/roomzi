@@ -4,9 +4,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin, CreditCard } from 'lucide-react';
+import { ArrowLeft, Home, Calendar, DollarSign, User, Phone, Mail, MapPin, CreditCard, X } from 'lucide-react';
 import { useState as useReactState, useEffect as useReactEffect } from 'react';
-import { getLeaseHistoryForTenantAndListing, getListingById } from '@/utils/api';
+import { getLeaseHistoryForTenantAndListing, getListingById, getLeasesForTenant } from '@/utils/api';
+import { ChatWindow } from '@/components/chat/ChatWindow';
 
 const TenantMyHouse = () => {
   const navigate = useNavigate();
@@ -20,6 +21,45 @@ const TenantMyHouse = () => {
   const [leaseHistory, setLeaseHistory] = useReactState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useReactState(false);
   const [historyError, setHistoryError] = useReactState<string | null>(null);
+  const [rentalStatus, setRentalStatus] = useState<string>('Unknown');
+  const [leaseInfo, setLeaseInfo] = useState<any>(null);
+  const [selectedChat, setSelectedChat] = useState<{
+    propertyTitle: string;
+    propertyImage: string;
+    landlordName: string;
+    landlordId: string;
+    propertyId: string;
+    chatRoomId: string;
+  } | null>(null);
+
+  // Function to determine rental status based on lease information
+  const determineRentalStatus = (lease: any, listing: any) => {
+    if (!lease) {
+      return { status: 'No Lease', color: 'bg-gray-100 text-gray-800' };
+    }
+
+    if (!lease.signed) {
+      return { status: 'Lease Pending', color: 'bg-yellow-100 text-yellow-800' };
+    }
+
+    const now = new Date();
+    const startDate = lease.start_date ? new Date(lease.start_date) : null;
+    const endDate = lease.end_date ? new Date(lease.end_date) : null;
+
+    if (!startDate || !endDate) {
+      return { status: 'Lease Active', color: 'bg-green-100 text-green-800' };
+    }
+
+    if (now < startDate) {
+      return { status: 'Lease Upcoming', color: 'bg-blue-100 text-blue-800' };
+    } else if (now >= startDate && now <= endDate) {
+      return { status: 'Active Rental', color: 'bg-green-100 text-green-800' };
+    } else if (now > endDate) {
+      return { status: 'Lease Expired', color: 'bg-red-100 text-red-800' };
+    }
+
+    return { status: 'Lease Active', color: 'bg-green-100 text-green-800' };
+  };
 
   useEffect(() => {
     if (!tenantId) return;
@@ -27,27 +67,13 @@ const TenantMyHouse = () => {
     
     const fetchRentalData = async () => {
       try {
+        let rental: any = null;
+        
         if (listingId) {
           // Fetch specific listing by ID
           const response = await getListingById(listingId);
           if (response.success && response.data) {
-            const rental = response.data;
-            setCurrentRental({
-              id: rental.id,
-              propertyTitle: rental.title || "Property",
-              address: `${rental.address}, ${rental.city}, ${rental.state}`,
-              landlordName: rental.landlord_name || "Landlord",
-              landlordPhone: rental.landlord_phone || rental.landlordPhone || "N/A",
-              landlordEmail: rental.landlord_email || rental.landlordEmail || "N/A",
-              rent: rental.price || 0,
-              leaseStart: rental.lease_start || "N/A",
-              leaseEnd: rental.lease_end || "N/A",
-              image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
-            });
-            setHasRental(true);
-          } else {
-            setHasRental(false);
-            setCurrentRental(null);
+            rental = response.data;
           }
         } else {
           // Fetch current rental (original behavior)
@@ -56,34 +82,57 @@ const TenantMyHouse = () => {
           
           if (data.success && data.data && data.data.length > 0) {
             // Find the property where available === false (rented)
-            const rental = data.data.find((listing: any) => listing.available === false);
-            if (rental) {
-              setCurrentRental({
-                id: rental.id,
-                propertyTitle: rental.title || "My Rental Property",
-                address: `${rental.address}, ${rental.city}, ${rental.state}`,
-                landlordName: rental.landlord_name || "Landlord",
-                landlordPhone: rental.landlord_phone || rental.landlordPhone || "N/A",
-                landlordEmail: rental.landlord_email || rental.landlordEmail || "N/A",
-                rent: rental.price || 0,
-                leaseStart: rental.lease_start || "N/A",
-                leaseEnd: rental.lease_end || "N/A",
-                image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
-              });
-              setHasRental(true);
-            } else {
-              setHasRental(false);
-              setCurrentRental(null);
-            }
-          } else {
-            setHasRental(false);
-            setCurrentRental(null);
+            rental = data.data.find((listing: any) => listing.available === false);
           }
+        }
+
+        if (rental) {
+          setCurrentRental({
+            id: rental.id,
+            propertyTitle: rental.title || "Property",
+            address: `${rental.address}, ${rental.city}, ${rental.state}`,
+            landlordName: rental.landlord_name || "Landlord",
+            landlordId: rental.landlord_id || rental.landlordId,
+            landlordPhone: rental.landlord_phone || rental.landlordPhone || "N/A",
+            landlordEmail: rental.landlord_email || rental.landlordEmail || "N/A",
+            rent: rental.price || 0,
+            leaseStart: rental.lease_start || "N/A",
+            leaseEnd: rental.lease_end || "N/A",
+            image: rental.images ? (Array.isArray(rental.images) ? rental.images[0] : JSON.parse(rental.images)[0]) : "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400&h=300&fit=crop"
+          });
+          setHasRental(true);
+
+          // Fetch lease information for this property
+          try {
+            const leaseResponse = await getLeasesForTenant(tenantId);
+            if (leaseResponse.success && Array.isArray(leaseResponse.data)) {
+              // Find lease for this specific property
+              const propertyLease = leaseResponse.data.find((lease: any) => 
+                lease.listing_id === rental.id || lease.listing_id === rental.id.toString()
+              );
+              setLeaseInfo(propertyLease || null);
+              
+              // Determine rental status
+              const statusInfo = determineRentalStatus(propertyLease, rental);
+              setRentalStatus(statusInfo.status);
+            }
+          } catch (leaseErr) {
+            console.error('Error fetching lease info:', leaseErr);
+            setLeaseInfo(null);
+            setRentalStatus('Unknown');
+          }
+        } else {
+          setHasRental(false);
+          setCurrentRental(null);
+          setLeaseInfo(null);
+          setRentalStatus('Unknown');
         }
       } catch (err) {
         console.error('Error fetching rental data:', err);
         setHasRental(false);
         setCurrentRental(null);
+        setLeaseInfo(null);
+        setRentalStatus('Unknown');
       } finally {
         setLoading(false);
       }
@@ -122,6 +171,19 @@ const TenantMyHouse = () => {
     }
   };
 
+  const handleSendMessage = () => {
+    if (currentRental) {
+      setSelectedChat({
+        propertyTitle: currentRental.propertyTitle,
+        propertyImage: currentRental.image,
+        landlordName: currentRental.landlordName,
+        landlordId: currentRental.landlordId,
+        propertyId: currentRental.id,
+        chatRoomId: '', // Will be created by ChatWindow
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
@@ -142,7 +204,9 @@ const TenantMyHouse = () => {
               </h1>
             </div>
             {hasRental && (
-              <Badge className="bg-green-100 text-green-800">Active Rental</Badge>
+              <Badge className={determineRentalStatus(leaseInfo, currentRental).color}>
+                {rentalStatus}
+              </Badge>
             )}
           </div>
         </div>
@@ -329,11 +393,7 @@ const TenantMyHouse = () => {
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
-                <Button size="sm" className="roomzi-gradient">
-                  <Phone className="w-4 h-4 mr-2" />
-                  Call Landlord
-                </Button>
-                <Button size="sm" variant="outline">
+                <Button size="sm" className="roomzi-gradient" onClick={handleSendMessage}>
                   <Mail className="w-4 h-4 mr-2" />
                   Send Message
                 </Button>
@@ -369,6 +429,35 @@ const TenantMyHouse = () => {
           </div>
         )}
       </div>
+
+      {/* Chat Window */}
+      {selectedChat && (
+        <div className="fixed bottom-4 right-4 z-50 w-[350px] h-[500px] bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]">
+          <div className="relative h-full flex flex-col">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 z-10 bg-white rounded-full shadow-md hover:bg-gray-100"
+              onClick={() => setSelectedChat(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+
+            <div className="flex-1 min-h-0">
+              <ChatWindow
+                propertyTitle={selectedChat.propertyTitle}
+                propertyImage={selectedChat.propertyImage}
+                landlordName={selectedChat.landlordName}
+                landlordId={selectedChat.landlordId}
+                propertyId={selectedChat.propertyId}
+                chatRoomId={selectedChat.chatRoomId}
+                isFullPage={false}
+                onClose={() => setSelectedChat(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

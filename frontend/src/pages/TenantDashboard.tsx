@@ -49,9 +49,10 @@ const TenantDashboard = () => {
   });
   const location = useLocation();
 
-  // Add mock lease state
-  const [hasNewLease, setHasNewLease] = useState(false); // now real data
+  // Lease notification state for matches tab
+  const [hasNewLease, setHasNewLease] = useState(false);
   const [leaseId, setLeaseId] = useState<string | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
   // Debug: Log current user info
   useEffect(() => {
@@ -89,10 +90,42 @@ const TenantDashboard = () => {
   useEffect(() => {
     const handleFocus = () => {
       fetchProfile();
+      // Also refresh lease status and unread messages when component comes into focus
+      if (user?.id) {
+        const checkForNewLeases = async () => {
+          try {
+            const response = await getLeasesForTenant(user.id);
+            if (response.success && Array.isArray(response.data)) {
+              const unsignedLease = response.data.find((lease: any) => lease.signed === false);
+              setHasNewLease(!!unsignedLease);
+              setLeaseId(unsignedLease?.id || null);
+            }
+          } catch (err) {
+            setHasNewLease(false);
+            setLeaseId(null);
+          }
+        };
+
+        const checkForUnreadMessages = async () => {
+          try {
+            const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${user.id}/tenant`);
+            const chatArray = response?.data;
+            if (chatArray && Array.isArray(chatArray)) {
+              const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
+              setUnreadMessageCount(unreadCount);
+            }
+          } catch (err) {
+            setUnreadMessageCount(0);
+          }
+        };
+
+        checkForNewLeases();
+        checkForUnreadMessages();
+      }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     const handleProfileUpdated = (e: any) => {
@@ -109,27 +142,38 @@ const TenantDashboard = () => {
   }, []);
 
   useEffect(() => {
-    // Fetch leases for the current tenant
-    const fetchLeases = async () => {
+    // Check for new leases and unread messages to show notification badges on matches tab
+    const checkForNewLeases = async () => {
       if (!user?.id) return;
       try {
         const response = await getLeasesForTenant(user.id);
         if (response.success && Array.isArray(response.data)) {
           const unsignedLease = response.data.find((lease: any) => lease.signed === false);
-          if (unsignedLease) {
-            setHasNewLease(true);
-            setLeaseId(unsignedLease.id);
-          } else {
-            setHasNewLease(false);
-            setLeaseId(null);
-          }
+          setHasNewLease(!!unsignedLease);
+          setLeaseId(unsignedLease?.id || null);
         }
       } catch (err) {
         setHasNewLease(false);
         setLeaseId(null);
       }
     };
-    fetchLeases();
+
+    const checkForUnreadMessages = async () => {
+      if (!user?.id) return;
+      try {
+        const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${user.id}/tenant`);
+        const chatArray = response?.data;
+        if (chatArray && Array.isArray(chatArray)) {
+          const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
+          setUnreadMessageCount(unreadCount);
+        }
+      } catch (err) {
+        setUnreadMessageCount(0);
+      }
+    };
+
+    checkForNewLeases();
+    checkForUnreadMessages();
   }, [user]);
 
   const fetchProperties = async () => {
@@ -233,19 +277,6 @@ const TenantDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      {/* Lease Notification Banner */}
-      {hasNewLease && leaseId && (
-        <div
-          className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 cursor-pointer flex items-center justify-between"
-          onClick={() => navigate(`/tenant/lease/${leaseId}`)}
-        >
-          <span>📄 You have a new lease to review and sign!</span>
-          <button
-            className="ml-4 text-yellow-700 underline text-sm"
-            onClick={e => { e.stopPropagation(); setHasNewLease(false); }}
-          >Dismiss</button>
-        </div>
-      )}
       {/* Enhanced Header */}
       <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -482,11 +513,21 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 hover:bg-blue-50"
+            className="flex-col h-auto py-2 hover:bg-blue-50 relative"
             onClick={() => navigate('/tenant/matches')}
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
+            {hasNewLease && (
+              <span className="absolute -top-1 -left-1 bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse">
+                📄
+              </span>
+            )}
+            {unreadMessageCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
+                {unreadMessageCount}
+              </span>
+            )}
           </Button>
           <Button 
             variant="ghost" 

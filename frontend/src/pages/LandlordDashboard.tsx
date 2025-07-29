@@ -7,13 +7,18 @@ import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
+import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { useToast } from '@/hooks/use-toast';
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
+  const { toast } = useToast();
   const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [newlySignedLeases, setNewlySignedLeases] = useState<any[]>([]);
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
@@ -78,11 +83,161 @@ const LandlordDashboard = () => {
         setShowBanner(newRequests.length > 0);
       }
     }
+
+    async function checkForUnreadMessages() {
+      if (!userId) return;
+      try {
+        const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${userId}/landlord`);
+        const chatArray = response?.data;
+        if (chatArray && Array.isArray(chatArray)) {
+          const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
+          setUnreadMessageCount(unreadCount);
+        }
+      } catch (err) {
+        setUnreadMessageCount(0);
+      }
+    }
+
+    async function checkForNewlySignedLeases() {
+      if (!userId) return;
+      try {
+        // Fetch all leases for this landlord's properties
+        const listingsResponse = await fetch(`${getApiBaseUrl()}/api/landlords/${userId}/listings`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+        });
+        
+        if (!listingsResponse.ok) return;
+        
+        const listingsData = await listingsResponse.json();
+        const listings = listingsData.data || listingsData;
+        
+        // Get leases for each listing
+        const allLeases: any[] = [];
+        for (const listing of listings) {
+          try {
+            // Check if there's a lease for this listing by property ID
+            const leaseResponse = await fetch(`${getApiBaseUrl()}/api/leases/listing/${listing.id}`, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include',
+            });
+            
+            if (leaseResponse.ok) {
+              const leaseData = await leaseResponse.json();
+              if (leaseData.data && Array.isArray(leaseData.data)) {
+                allLeases.push(...leaseData.data);
+              } else if (leaseData.data) {
+                allLeases.push(leaseData.data);
+              }
+            }
+          } catch (err) {
+            console.error(`Error fetching leases for listing ${listing.id}:`, err);
+          }
+        }
+        
+        // Filter for signed leases that haven't been seen by landlord
+        const unseenSignedLeases = allLeases.filter((lease: any) => {
+          // Only show banner for leases that are signed AND haven't been seen by landlord
+          return lease.signed === true && lease.landlordseen === false;
+        });
+        
+        // Set the unseen signed leases for banner display
+        setNewlySignedLeases(unseenSignedLeases);
+      } catch (err) {
+        console.error('Error checking for newly signed leases:', err);
+      }
+    }
+
     fetchPendingMaintenance();
+    checkForUnreadMessages();
+    checkForNewlySignedLeases();
+  }, [userId, toast]);
+
+
+
+  // Refresh data when component comes into focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (userId) {
+        async function checkForUnreadMessages() {
+          try {
+            const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${userId}/landlord`);
+            const chatArray = response?.data;
+            if (chatArray && Array.isArray(chatArray)) {
+              const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
+              setUnreadMessageCount(unreadCount);
+            }
+          } catch (err) {
+            setUnreadMessageCount(0);
+          }
+        }
+        checkForUnreadMessages();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [userId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
+      {/* Newly Signed Leases Banner */}
+      {newlySignedLeases.length > 0 && (
+        <div className="bg-green-50 border-b border-green-200 p-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl">🎉</span>
+                <div>
+                  <h3 className="font-semibold text-green-800">Congratulations!</h3>
+                  <p className="text-sm text-green-700">
+                    {newlySignedLeases.length === 1 ? (
+                      <>
+                        {newlySignedLeases[0].tenant_profiles?.full_name || newlySignedLeases[0].tenant_name || newlySignedLeases[0].tenantName || 'Tenant'} signed lease for {newlySignedLeases[0].listings?.title || newlySignedLeases[0].property_name || newlySignedLeases[0].propertyName || 'Property'}!
+                      </>
+                    ) : (
+                      `${newlySignedLeases.length} new lease${newlySignedLeases.length === 1 ? ' has' : 's have'} been signed!`
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-green-600 hover:text-green-800 hover:bg-green-100"
+                onClick={async () => {
+                  // Mark all unseen leases as seen
+                  if (newlySignedLeases.length > 0) {
+                    try {
+                      const leaseIds = newlySignedLeases.map(lease => lease.id);
+                      await fetch(`${getApiBaseUrl()}/api/leases/mark-seen`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({ leaseIds })
+                      });
+                    } catch (err) {
+                      console.error('Error marking leases as seen:', err);
+                    }
+                  }
+                  setNewlySignedLeases([]);
+                }}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -271,11 +426,16 @@ const LandlordDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2"
+            className="flex-col h-auto py-2 relative"
             onClick={() => navigate('/landlord/matches')}
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
+            {unreadMessageCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
+                {unreadMessageCount}
+              </span>
+            )}
           </Button>
           <Button 
             variant="ghost" 

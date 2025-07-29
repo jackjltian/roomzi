@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,8 +25,15 @@ interface Match {
   timestamp: number; // Added timestamp for sorting
 }
 
+interface LeaseInfo {
+  exists: boolean;
+  leaseId?: string;
+  signed?: boolean;
+}
+
 const TenantMatches = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [matches, setMatches] = useState<Match[]>([]);
@@ -41,6 +48,7 @@ const TenantMatches = () => {
     propertyId: string;
     chatRoomId: string;
   } | null>(null);
+  const [leaseInfo, setLeaseInfo] = useState<{ [matchId: string]: LeaseInfo }>({});
 
   // Fetch matches from API
   const fetchMatches = async () => {
@@ -146,6 +154,79 @@ const TenantMatches = () => {
     fetchMatches();
   }, [user?.id]);
 
+  // Refresh data when component mounts or when user returns to this page
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user?.id) {
+        fetchMatches();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user?.id]);
+
+  // Refresh when returning from lease signing
+  useEffect(() => {
+    if (location.state && location.state.leaseSigned) {
+      fetchMatches();
+      // Clear the state
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  // Fetch lease information for each match
+  useEffect(() => {
+    const fetchLeaseInfo = async () => {
+      if (!matches.length || !user?.id) return;
+      
+      const leaseData: { [matchId: string]: LeaseInfo } = {};
+      
+      for (const match of matches) {
+        try {
+          const response = await fetch(`${getApiBaseUrl()}/api/leases/${match.propertyId}/${user.id}`);
+          const data = await response.json();
+          leaseData[match.id] = data;
+        } catch (error) {
+          console.error('Error fetching lease info for match:', match.id, error);
+          leaseData[match.id] = { exists: false };
+        }
+      }
+      
+      setLeaseInfo(leaseData);
+    };
+
+    fetchLeaseInfo();
+  }, [matches, user?.id]);
+
+  // Refresh lease info when component comes into focus (e.g., when returning from lease signing)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (matches.length && user?.id) {
+        const fetchLeaseInfo = async () => {
+          const leaseData: { [matchId: string]: LeaseInfo } = {};
+          
+          for (const match of matches) {
+            try {
+              const response = await fetch(`${getApiBaseUrl()}/api/leases/${match.propertyId}/${user.id}`);
+              const data = await response.json();
+              leaseData[match.id] = data;
+            } catch (error) {
+              console.error('Error fetching lease info for match:', match.id, error);
+              leaseData[match.id] = { exists: false };
+            }
+          }
+          
+          setLeaseInfo(leaseData);
+        };
+        fetchLeaseInfo();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [matches, user?.id]);
+
   const handleReply = async (match: Match) => {
     
     // Mark this chat as read in the database
@@ -185,6 +266,12 @@ const TenantMatches = () => {
     navigate(`/property/${propertyId}`);
   };
 
+  const handleLeaseAction = (matchId: string, leaseId?: string) => {
+    if (leaseId) {
+      navigate(`/tenant/lease/${leaseId}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
@@ -195,19 +282,43 @@ const TenantMatches = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/tenant')}
+                onClick={() => navigate(-1)}
                 className="mr-2"
               >
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <h1 className="text-2xl font-bold text-roomzi-blue">Matches</h1>
             </div>
-            <Badge variant="secondary">{matches.filter(m => m.unread).length} New</Badge>
+            <div className="flex space-x-2">
+              <Badge variant="secondary">{matches.filter(m => m.unread).length} New</Badge>
+              {Object.values(leaseInfo).some(lease => lease.exists && lease.signed === false) && (
+                <Badge className="bg-yellow-500 text-white animate-pulse">📄 Lease</Badge>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Lease Notifications */}
+        {Object.values(leaseInfo).some(lease => lease.exists && lease.signed === false) && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl">📄</span>
+                <div>
+                  <h3 className="font-semibold text-yellow-800">New Lease Available</h3>
+                  <p className="text-sm text-yellow-700">
+                    You have unsigned lease(s) waiting for your review. Check your matches below.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        
         {/* Tabs */}
         <Tabs defaultValue="matches" className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-8">
@@ -239,9 +350,18 @@ const TenantMatches = () => {
                         <h3 className="text-lg font-semibold text-gray-900 truncate">
                           {match.propertyTitle}
                         </h3>
-                        {match.unread && (
-                          <Badge className="bg-roomzi-blue text-white">New</Badge>
-                        )}
+                        <div className="flex space-x-2">
+                          {match.unread && (
+                            <Badge className="bg-roomzi-blue text-white">New</Badge>
+                          )}
+                          {leaseInfo[match.id] && leaseInfo[match.id].exists && (
+                            leaseInfo[match.id].signed === true ? (
+                              <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge>
+                            ) : leaseInfo[match.id].signed === false ? (
+                              <Badge className="bg-yellow-500 hover:bg-yellow-400 animate-pulse">📄 New Lease</Badge>
+                            ) : null
+                          )}
+                        </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         <User className="w-4 h-4 inline mr-1" />
@@ -268,6 +388,19 @@ const TenantMatches = () => {
                       <Home className="w-4 h-4 mr-2" />
                       View Property
                     </Button>
+                    {leaseInfo[match.id] && leaseInfo[match.id].exists && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className={leaseInfo[match.id].signed === true
+                          ? "bg-green-50 border-green-300 text-green-700 hover:bg-green-100" 
+                          : "bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                        }
+                        onClick={() => handleLeaseAction(match.id, leaseInfo[match.id].leaseId)}
+                      >
+                        📄 Review Lease
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -309,9 +442,18 @@ const TenantMatches = () => {
                         <h3 className="text-lg font-semibold text-gray-900 truncate">
                           {match.propertyTitle}
                         </h3>
-                        {match.unread && (
-                          <Badge className="bg-roomzi-blue text-white">New</Badge>
-                        )}
+                        <div className="flex space-x-2">
+                          {match.unread && (
+                            <Badge className="bg-roomzi-blue text-white">New</Badge>
+                          )}
+                          {leaseInfo[match.id] && leaseInfo[match.id].exists && (
+                            leaseInfo[match.id].signed === true ? (
+                              <Badge className="bg-green-600 hover:bg-green-500">Lease Signed</Badge>
+                            ) : leaseInfo[match.id].signed === false ? (
+                              <Badge className="bg-yellow-500 hover:bg-yellow-400 animate-pulse">📄 New Lease</Badge>
+                            ) : null
+                          )}
+                        </div>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
                         <User className="w-4 h-4 inline mr-1" />
@@ -338,6 +480,19 @@ const TenantMatches = () => {
                       <Home className="w-4 h-4 mr-2" />
                       View Property
                     </Button>
+                    {leaseInfo[match.id] && leaseInfo[match.id].exists && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className={leaseInfo[match.id].signed === true
+                          ? "bg-green-50 border-green-300 text-green-700 hover:bg-green-100" 
+                          : "bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                        }
+                        onClick={() => handleLeaseAction(match.id, leaseInfo[match.id].leaseId)}
+                      >
+                        📄 Review Lease
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>

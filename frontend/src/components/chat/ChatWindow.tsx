@@ -130,7 +130,7 @@ export function ChatWindow({
       // Only create a new chat room if we don't have a chatRoomId AND we have all required IDs
       if (!chatRoomId && user && landlordId && propertyId) {
         const isTenant = userRole === 'tenant';
-        const tenant_id = isTenant ? user.id : undefined;
+        const tenant_id = isTenant ? user.id : landlordId;
         const landlord_id = isTenant ? landlordId : user.id;
         const tenant_name = isTenant
           ? user.user_metadata?.full_name
@@ -153,12 +153,20 @@ export function ChatWindow({
             propertyTitle,
             landlordName
           );
-          if (chatRoom && chatRoom.id) {
-            setChatRoomId(chatRoom.id);
-            await fetchMessages(chatRoom.id);
+          if (chatRoom && chatRoom.data && chatRoom.data.id) {
+            console.log('[ChatWindow] Setting chat room ID:', chatRoom.data.id);
+            setChatRoomId(chatRoom.data.id);
+            await fetchMessages(chatRoom.data.id);
+          } else {
+            console.error('[ChatWindow] Invalid chat room response:', chatRoom);
           }
         } catch (e) {
-          console.log('[ChatWindow] Could not create chat room:', e);
+          console.error('[ChatWindow] Could not create chat room:', e);
+          console.error('[ChatWindow] Error details:', {
+            message: e.message,
+            response: e.response?.data,
+            status: e.response?.status
+          });
           // Don't create chat room automatically - let user send first message
         }
       }
@@ -299,12 +307,17 @@ export function ChatWindow({
   const fetchMessages = async (roomId: string) => {
     try {
       setIsLoading(true);
-      const apiMessages = await chatApi.getMessages(roomId);
+      const response = await chatApi.getMessages(roomId);
+      const apiMessages = response.data || response || [];
+      console.log('[ChatWindow] Fetched messages:', apiMessages);
+      
       // First, create a map of messages by id
       const msgMap: Record<string, any> = {};
-      apiMessages.forEach((msg: any) => { msgMap[msg.id] = msg; });
-      // Then, format messages and reconstruct replyTo
-      const formattedMessages = apiMessages.map((msg: any) => {
+      if (Array.isArray(apiMessages)) {
+        apiMessages.forEach((msg: any) => { msgMap[msg.id] = msg; });
+        
+        // Then, format messages and reconstruct replyTo
+        const formattedMessages = apiMessages.map((msg: any) => {
         // Determine if this is an image message (base64 data URL)
         const isImageMessage = msg.content.startsWith('data:image/');
         const messageType = isImageMessage ? 'image' : 'text';
@@ -318,16 +331,20 @@ export function ChatWindow({
         return {
           id: msg.id,
           content: isImageMessage ? `📷 Image` : msg.content,
-          sender: msg.sender_id === user?.id ? 'user' : 'other',
+          sender: (msg.sender_id === user?.id ? 'user' : 'other') as 'user' | 'other',
           timestamp: new Date(msg.created_at),
-          status: 'sent',
-          type: messageType,
+          status: 'sent' as const,
+          type: messageType as 'text' | 'image' | 'file',
           imageUrl: isImageMessage ? msg.content : undefined,
           reactions: {},
           replyTo
         };
       });
-      setMessages(formattedMessages);
+      setMessages(formattedMessages as Message[]);
+      } else {
+        console.error('[ChatWindow] Messages response is not an array:', apiMessages);
+        setMessages([]);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast({
