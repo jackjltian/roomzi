@@ -112,7 +112,7 @@ model maintenance_requests {
   status          String   @default("Pending")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  landlordcomment String?
+  landlordcomment String
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -125,7 +125,12 @@ model leases {
   end_date        DateTime?        @db.Date
   rent            Float?
   signed          Boolean          @default(false)
-  listings        listings?        @relation(fields: [listing_id], references: [id], onDelete: NoAction)
-  tenant_profiles tenant_profiles? @relation(fields: [tenant_id], references: [id], onDelete: NoAction)
-  document   String?
+  document        String?
+  landlordseen    Boolean          @default(false)
+  listings        listings?        @relation(fields: [listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant_profiles tenant_profiles? @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([listing_id])
+  @@index([signed])
+  @@index([tenant_id])
 }

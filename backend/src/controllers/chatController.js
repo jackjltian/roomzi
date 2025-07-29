@@ -141,6 +141,7 @@ export const getUserChats = async (req, res) => {
           propertyTitle: listing?.title || chat.property_name || 'Unknown Property',
           landlord_name: landlordProfile?.full_name || chat.landlord_name || 'Unknown Landlord',
           unreadCount,
+          unread: unreadCount > 0, // Add boolean unread property for frontend
           property_details: listing ? {
             address: listing.address,
             city: listing.city,
