@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { tenantApi, landlordApi, ApiError, imageUtils, documentUtils } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
+import { Switch } from '@/components/ui/switch';
 
 interface LandlordProfileData {
   id: string;
@@ -22,6 +23,8 @@ interface LandlordProfileData {
   documents?: Array<{ path: string; displayName: string }>;
   created_at?: string;
   updated_at?: string;
+  viewingRequestNotifications?: boolean;
+  rentReminderDays?: number;
 }
 
 const LandlordProfile = () => {
@@ -53,7 +56,42 @@ const LandlordProfile = () => {
   const [previewType, setPreviewType] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string | null>(null);
 
-  // Fetch landlord profile data
+  // Remove localStorage state and add API-based state
+  const [viewingRequestNotifications, setViewingRequestNotifications] = useState(true);
+  const [rentReminderDays, setRentReminderDays] = useState(3);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Add function to save settings via API
+  const saveSettings = async () => {
+    if (!user?.id) return;
+    
+    setSavingSettings(true);
+    try {
+      const updateResult = await landlordApi.update(user.id, {
+        viewingRequestNotifications,
+        rentReminderDays,
+      });
+
+      if (updateResult.success) {
+        toast({
+          title: "Settings Saved",
+          description: "Your notification preferences have been updated.",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Update useEffect to fetch settings from API
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return;
@@ -71,6 +109,9 @@ const LandlordProfile = () => {
             phone: result.data.data.phone || '',
             address: result.data.data.address || '',
           });
+          // Set settings from API response
+          setViewingRequestNotifications(result.data.data.viewingRequestNotifications ?? true);
+          setRentReminderDays(result.data.data.rentReminderDays ?? 3);
         } else {
           // Profile doesn't exist, create a basic one with user's auth data
           const createResult = await landlordApi.create(user.id, user.email || '', user.user_metadata);
@@ -83,6 +124,9 @@ const LandlordProfile = () => {
               phone: createResult.data.data.phone || '',
               address: createResult.data.data.address || '',
             });
+            // Set settings from created profile
+            setViewingRequestNotifications(createResult.data.data.viewingRequestNotifications ?? true);
+            setRentReminderDays(createResult.data.data.rentReminderDays ?? 3);
             setEditMode(true); // Automatically enter edit mode for new profiles
           }
         }
@@ -629,6 +673,53 @@ const LandlordProfile = () => {
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">Settings</h3>
             <div className="space-y-4">
+              {/* a) Viewing Request Notifications */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h4 className="font-medium">Viewing Request Notifications</h4>
+                  <p className="text-sm text-gray-600">Enable notifications for new viewing requests</p>
+                </div>
+                <Switch
+                  checked={viewingRequestNotifications}
+                  onCheckedChange={setViewingRequestNotifications}
+                />
+              </div>
+              {/* b) Rent Due Reminder Days */}
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h4 className="font-medium">Rent Due Reminder</h4>
+                  <p className="text-sm text-gray-600">Number of days before rent due to receive a reminder</p>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={rentReminderDays}
+                  onChange={e => setRentReminderDays(Number(e.target.value))}
+                  className="w-20 border rounded px-2 py-1 text-center"
+                />
+              </div>
+              {/* Save Settings Button */}
+              <div className="flex justify-end pt-4">
+                <Button 
+                  onClick={saveSettings}
+                  disabled={savingSettings}
+                  className="roomzi-gradient"
+                >
+                  {savingSettings ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
+              </div>
+              {/* Existing settings below */}
               <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div>
                   <h4 className="font-medium">Email Notifications</h4>

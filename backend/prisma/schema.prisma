@@ -34,6 +34,8 @@ model landlord_profiles {
   documents      Json[]           @default([])
   listings       listings[]
   viewingRequest viewingRequest[]
+  viewingRequestNotifications Boolean @default(true)
+  rentReminderDays Int @default(3)
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -98,7 +100,7 @@ model tenant_profiles {
 
 model payment_requests {
   id        Int      @id @default(autoincrement())
-  tenantId  String
+  tenantId  String   @db.Uuid
   listingId BigInt
   amount    Float
   date      DateTime @default(now())
@@ -109,8 +111,8 @@ model payment_requests {
 
 model maintenance_requests {
   id              Int      @id @default(autoincrement())
-  tenantId        String
-  landlordId      String
+  tenantId        String   @db.Uuid
+  landlordId      String   @db.Uuid
   listingId       BigInt
   description     String
   images          String[]

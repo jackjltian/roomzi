@@ -35,6 +35,7 @@ const LandlordDashboard = () => {
     phone: '',
     location: '',
     profilePhoto: '',
+    viewingRequestNotifications: true, // Add default setting
   });
 
   // Helper to format date safely
@@ -75,6 +76,7 @@ const LandlordDashboard = () => {
           phone: data.phone || '',
           location: data.address || '',
           profilePhoto: data.image_url || '',
+          viewingRequestNotifications: data.viewingRequestNotifications ?? true, // Get setting from API
         });
       }
     } catch (err) {
@@ -255,70 +257,72 @@ const LandlordDashboard = () => {
           </div>
         )}
 
-        {/* Viewing Requests Section */}
-        <Card className="p-6 mb-8 shadow-lg bg-white/80 backdrop-blur-sm border-0">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
-            <Eye className="w-5 h-5 mr-2 text-blue-500" />
-            Viewing Requests
-          </h2>
-          {loadingViewings ? (
-            <div className="text-gray-500">Loading...</div>
-          ) : viewingRequests.length === 0 ? (
-            <div className="text-gray-500">No viewing requests yet.</div>
-          ) : (
-            <div className="space-y-4">
-              {/* Approved requests as reminders */}
-              {approvedRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
+        {/* Viewing Requests Section - Only show if notifications are enabled */}
+        {profile.viewingRequestNotifications && (
+          <Card className="p-6 mb-8 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+              <Eye className="w-5 h-5 mr-2 text-blue-500" />
+              Viewing Requests
+            </h2>
+            {loadingViewings ? (
+              <div className="text-gray-500">Loading...</div>
+            ) : viewingRequests.length === 0 ? (
+              <div className="text-gray-500">No viewing requests yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Approved requests as reminders */}
+                {approvedRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
                     </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-semibold text-green-700">Approved</span>
-                  </div>
-                </div>
-              ))}
-              {/* Other requests (not closed) */}
-              {otherRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
-                    </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-semibold text-green-700">Approved</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
-                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
-                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
-                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                ))}
+                {/* Other requests (not closed) */}
+                {otherRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                      {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                      {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                      <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {v.status === 'Pending' && (
+                        <>
+                          <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
+                          <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
+                        </>
+                      )}
+                      {v.status !== 'Closed' && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => handleStatusUpdate(v.id, 'Closed', undefined)}>Close Request</Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    {v.status === 'Pending' && (
-                      <>
-                        <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
-                      </>
-                    )}
-                    {v.status !== 'Closed' && (
-                      <Button type="button" size="sm" variant="outline" onClick={() => handleStatusUpdate(v.id, 'Closed', undefined)}>Close Request</Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Propose New Time Modal */}
         <Dialog open={showProposeModal} onOpenChange={setShowProposeModal}>

@@ -19,25 +19,6 @@ ALTER TABLE "messages" ADD COLUMN     "reply_to_id" UUID;
 -- Add documents column to tenant_profiles
 ALTER TABLE "tenant_profiles" ADD COLUMN "documents" JSONB[] DEFAULT ARRAY[]::JSONB[];
 
--- Create viewingRequest table if not exists
-CREATE TABLE IF NOT EXISTS "viewingRequest" (
-    "id" SERIAL NOT NULL,
-    "propertyId" BIGINT NOT NULL,
-    "tenantId" UUID NOT NULL,
-    "landlordId" UUID NOT NULL,
-    "requestedDateTime" TIMESTAMP(3) NOT NULL,
-    "proposedDateTime" TIMESTAMP(3),
-    "status" TEXT NOT NULL DEFAULT 'Pending',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "viewingRequest_pkey" PRIMARY KEY ("id")
-);
-
--- Add foreign keys if not exist
-ALTER TABLE "viewingRequest" ADD CONSTRAINT "viewingRequest_landlordId_fkey" FOREIGN KEY ("landlordId") REFERENCES "landlord_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "viewingRequest" ADD CONSTRAINT "viewingRequest_propertyId_fkey" FOREIGN KEY ("propertyId") REFERENCES "listings"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "viewingRequest" ADD CONSTRAINT "viewingRequest_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenant_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
 -- CreateTable
 CREATE TABLE "maintenance_requests" (
     "id" SERIAL NOT NULL,
