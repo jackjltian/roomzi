@@ -294,15 +294,6 @@ const TenantDashboard = () => {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => navigate('/tenant/profile')}
-                className="hover:bg-blue-50"
-              >
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
                 onClick={() => signOut()}
                 className="hover:bg-red-50 text-red-600"
               >

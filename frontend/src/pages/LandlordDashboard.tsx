@@ -219,15 +219,6 @@ const LandlordDashboard = () => {
               <Badge className="ml-3 bg-green-100 text-green-800">Landlord</Badge>
             </div>
             <div className="flex items-center space-x-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => navigate('/landlord/profile')}
-                className="hover:bg-green-50"
-              >
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
