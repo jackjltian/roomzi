@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut } from 'lucide-react';
+import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut, Calendar as CalendarIcon, XCircle, CheckCircle, Clock } from 'lucide-react';
 import { Property } from '@/data/sampleProperties';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Map from '@/components/Map';
@@ -48,6 +48,8 @@ const TenantDashboard = () => {
     profilePhoto: '',
   });
   const location = useLocation();
+  const [viewings, setViewings] = useState([]);
+  const [loadingViewings, setLoadingViewings] = useState(true);
 
   // Lease notification state for matches tab
   const [hasNewLease, setHasNewLease] = useState(false);
@@ -140,6 +142,24 @@ const TenantDashboard = () => {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, []);
+
+  const fetchViewings = async () => {
+    if (!user) return;
+    setLoadingViewings(true);
+    try {
+      // Fetch all requests for this tenant
+      const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`);
+      setViewings(res);
+    } catch (err) {
+      setViewings([]);
+    } finally {
+      setLoadingViewings(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchViewings();
+  }, [user]);
 
   useEffect(() => {
     // Check for new leases and unread messages to show notification badges on matches tab
@@ -275,6 +295,17 @@ const TenantDashboard = () => {
     navigate(`/property/${propertyId}`);
   };
 
+  // Filter requests: show all except 'Closed', but always show 'Approved' as reminders
+  const approvedRequests = viewings.filter(v => v.status === 'Approved');
+  const otherRequests = viewings.filter(v => v.status !== 'Closed' && v.status !== 'Approved');
+
+  // Helper to format date safely
+  const formatDateSafe = (dateString: string) => {
+    if (!dateString) return 'Not set';
+    const d = new Date(dateString);
+    return isNaN(d.getTime()) ? 'Not set' : d.toLocaleString();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Enhanced Header */}
@@ -342,6 +373,78 @@ const TenantDashboard = () => {
 
         {/* Upcoming Payment Banner */}
         <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
+
+        {/* Viewing Requests Section */}
+        <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+            <CalendarIcon className="w-5 h-5 mr-2 text-blue-500" />
+            Your Viewing Requests
+          </h2>
+          {loadingViewings ? (
+            <div className="text-gray-500">Loading...</div>
+          ) : viewings.length === 0 ? (
+            <div className="text-gray-500">No viewing requests yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {/* Approved requests as reminders */}
+              {approvedRequests.map((v) => (
+                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                  <div>
+                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                    <div className="text-sm text-gray-600">
+                      Requested: {formatDateSafe(v.requestedDateTime)}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-semibold text-green-700">Approved</span>
+                  </div>
+                </div>
+              ))}
+              {/* Other requests */}
+              {otherRequests.map((v) => (
+                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                  <div>
+                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                    <div className="text-sm text-gray-600">
+                      Requested: {formatDateSafe(v.requestedDateTime)}
+                    </div>
+                    <div className="text-xs text-blue-700">
+                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                  </div>
+                  {v.status === 'Proposed' && (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={async () => {
+                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) });
+                        fetchViewings();
+                      }}>Approve</Button>
+                      <Button size="sm" variant="destructive" onClick={async () => {
+                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Declined' }) });
+                        fetchViewings();
+                      }}>Decline</Button>
+                    </div>
+                  )}
+                  {v.status !== 'Closed' && (
+                    <Button size="sm" variant="outline" onClick={async () => {
+                      await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Closed' }) });
+                      fetchViewings();
+                    }}>Close Request</Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">

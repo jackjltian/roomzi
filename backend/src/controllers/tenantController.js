@@ -4,30 +4,49 @@ import { successResponse, errorResponse } from "../utils/response.js";
 // Helper function to convert BigInt to string for JSON serialization
 const convertBigIntToString = (obj) => {
   if (obj === null || obj === undefined) return obj;
-  
-  if (typeof obj === 'bigint') {
+
+  if (typeof obj === "bigint") {
     return obj.toString();
   }
-  
+
   // Handle Date objects
   if (obj instanceof Date) {
     return obj.toISOString();
   }
-  
+
   if (Array.isArray(obj)) {
     return obj.map(convertBigIntToString);
   }
-  
-  if (typeof obj === 'object') {
+
+  if (typeof obj === "object") {
     const converted = {};
     for (const [key, value] of Object.entries(obj)) {
       converted[key] = convertBigIntToString(value);
     }
     return converted;
   }
-  
+
   return obj;
 };
+
+function normalizeDocuments(docs) {
+  if (!Array.isArray(docs)) return [];
+  return docs
+    .map((doc) => {
+      if (typeof doc === "string") {
+        return { path: doc, displayName: doc.split("/").pop() || "Document" };
+      }
+      if (doc && typeof doc === "object" && doc.path) {
+        return {
+          path: doc.path,
+          displayName:
+            doc.displayName || doc.path.split("/").pop() || "Document",
+        };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
 
 // Get all tenants
 export const getTenants = async (req, res) => {
@@ -100,36 +119,40 @@ export const getTenantById = async (req, res) => {
 // Create new tenant (with upsert functionality)
 export const createTenant = async (req, res) => {
   try {
-    const { id, full_name, email, phone, image_url, address } = req.body;
-
+    const { id, full_name, email, phone, image_url, address, documents } =
+      req.body;
     // Use upsert to handle both create and update scenarios
     const tenant = await prisma.tenant_profiles.upsert({
       where: { id },
       update: {
-        // Update existing profile with new data if provided
         ...(full_name && { full_name }),
         ...(email && { email }),
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
+        ...(documents !== undefined && {
+          documents: { set: normalizeDocuments(documents) },
+        }),
         updated_at: new Date(),
       },
       create: {
         id,
-        full_name: full_name || email.split("@")[0], // Use email prefix as fallback
+        full_name: full_name || email.split("@")[0],
         email,
         phone,
         image_url,
         address,
+        documents: { set: normalizeDocuments(documents || []) },
       },
     });
-
-    // Convert BigInt to string for JSON serialization
     const responseData = convertBigIntToString(tenant);
     res
       .status(201)
       .json(
-        successResponse(responseData, "Tenant profile created/updated successfully")
+        successResponse(
+          responseData,
+          "Tenant profile created/updated successfully"
+        )
       );
   } catch (error) {
     console.error("Error creating/updating tenant:", error);
@@ -141,32 +164,62 @@ export const createTenant = async (req, res) => {
 export const updateTenant = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, email, phone, image_url, address } = req.body;
+    const { full_name, email, phone, image_url, address, documents } = req.body;
+
+    console.log("Updating tenant profile:", { id, documents });
+
+    // Update tenant profile
+    const updateData = {
+      ...(full_name && { full_name }),
+      ...(email && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(image_url !== undefined && { image_url }),
+      ...(address !== undefined && { address }),
+      updated_at: new Date(),
+    };
+
+    // Handle documents separately to avoid issues with normalization
+    if (documents !== undefined) {
+      console.log("Normalizing documents:", documents);
+      const normalizedDocuments = normalizeDocuments(documents);
+      console.log("Normalized documents:", normalizedDocuments);
+      // Use set operation for JSON array to avoid Prisma validation issues
+      updateData.documents = {
+        set: normalizedDocuments,
+      };
+    }
 
     const tenant = await prisma.tenant_profiles.update({
       where: { id },
-      data: {
-        ...(full_name && { full_name }),
-        ...(email && { email }),
-        ...(phone !== undefined && { phone }),
-        ...(image_url !== undefined && { image_url }),
-        ...(address !== undefined && { address }),
-        updated_at: new Date(),
-      },
+      data: updateData,
     });
 
-    // Convert BigInt to string for JSON serialization
+    // Real-time sync: update landlord profile if exists
+    const landlordProfile = await prisma.landlord_profiles.findUnique({
+      where: { id },
+    });
+    if (landlordProfile) {
+      await prisma.landlord_profiles.update({
+        where: { id },
+        data: {
+          ...(full_name && { full_name }),
+          ...(email && { email }),
+          ...(phone !== undefined && { phone }),
+          ...(image_url !== undefined && { image_url }),
+          ...(address !== undefined && { address }),
+          updated_at: new Date(),
+        },
+      });
+    }
     const responseData = convertBigIntToString(tenant);
     res.json(successResponse(responseData, "Tenant updated successfully"));
   } catch (error) {
     console.error("Error updating tenant:", error);
-
     if (error.code === "P2025") {
       return res
         .status(404)
         .json(errorResponse(new Error("Tenant not found"), 404));
     }
-
     res.status(500).json(errorResponse(error));
   }
 };
@@ -198,14 +251,16 @@ export const deleteTenant = async (req, res) => {
 export const getTenantListings = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
+    console.log("Fetching listings for tenant ID:", id);
+
 
 
     // Fetch listings for the tenant, including landlord_profiles and leases
     const listings = await prisma.listings.findMany({
-      where: { 
+      where: {
         tenant_id: id,
-        available: false // Only show occupied properties
+        available: false, // Only show occupied properties
       },
       include: {
         landlord_profiles: {
@@ -225,6 +280,14 @@ export const getTenantListings = async (req, res) => {
       },
       orderBy: { created_at: "desc" },
     });
+
+    console.log("Found listings:", listings.length, "for tenant:", id);
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = listings.map((listing) => ({
+      ...listing,
+      id: listing.id.toString(),
+    }));
 
     // Process listings with lease data and landlord contact info
     const listingsWithLeaseDates = listings.map((listing) => {
@@ -263,6 +326,7 @@ export const getTenantListings = async (req, res) => {
         landlord_phone: listing.landlord_profiles?.phone || listing.landlord_phone || "N/A",
       };
     });
+
 
     res.json(
       successResponse(listingsWithLeaseDates, "Tenant listings retrieved successfully")
