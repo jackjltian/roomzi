@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut, Calendar as CalendarIcon, XCircle, CheckCircle, Clock } from 'lucide-react';
+import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut, Calendar as CalendarIcon, XCircle, CheckCircle, Clock, Eye } from 'lucide-react';
 import { Property } from '@/data/sampleProperties';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Map from '@/components/Map';
@@ -281,14 +281,12 @@ const TenantDashboard = () => {
         </div>
       )}
       {/* Enhanced Header */}
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-20">
+      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Room<span className="text-yellow-500">zi</span>
-              </h1>
-              <Badge variant="secondary" className="ml-3 bg-blue-100 text-blue-700">Tenant</Badge>
+              <h1 className="text-2xl font-bold text-roomzi-blue">Room<span className="text-yellow-500">zi</span></h1>
+              <Badge className="ml-3 bg-green-100 text-green-800">Tenant</Badge>
             </div>
             <div className="flex items-center space-x-4">
               <Button 
@@ -307,31 +305,14 @@ const TenantDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24">
         {/* Tenant Profile Info */}
-        <Card className="p-6 mb-6 flex items-center gap-6">
-          <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
-            {profile.profilePhoto ? (
-              <img src={profile.profilePhoto} alt="Profile" className="w-20 h-20 object-cover" />
-            ) : (
-              <User className="w-10 h-10 text-gray-400" />
-            )}
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">{profile.fullName || 'Your Name'}</h2>
-            <div className="text-gray-600 text-sm">{profile.email}</div>
-            <div className="text-gray-600 text-sm">{profile.phone}</div>
-            <div className="text-gray-600 text-sm">{profile.location}</div>
-          </div>
-          <div className="ml-auto">
-            <Button variant="outline" size="sm" onClick={() => navigate('/tenant/profile')}>
-              <Settings className="w-4 h-4 mr-2" /> Edit Profile
-            </Button>
-          </div>
-        </Card>
+        {/* REMOVE the profile card at the top (Card with profile info) */}
 
         {/* Enhanced Welcome Section */}
-        <div className="mb-8 text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-3">Welcome, {profile.fullName || 'Tenant'}!</h2>
-          <p className="text-gray-600 text-lg">Find your perfect home with our enhanced search and map view</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {profile.fullName || 'Tenant'}!</h2>
+            <p className="text-gray-600">Find your perfect home with our enhanced search and map view</p>
+          </div>
         </div>
 
         {/* Upcoming Payment Banner */}
@@ -340,8 +321,8 @@ const TenantDashboard = () => {
         {/* Viewing Requests Section */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
-            <CalendarIcon className="w-5 h-5 mr-2 text-blue-500" />
-            Your Viewing Requests
+            <Eye className="w-5 h-5 mr-2 text-blue-500" />
+            Viewing Requests
           </h2>
           {loadingViewings ? (
             <div className="text-gray-500">Loading...</div>
@@ -565,12 +546,12 @@ const TenantDashboard = () => {
       </div>
 
       {/* Enhanced Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 py-2 shadow-xl">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 shadow-lg">
         <div className="flex justify-around items-center max-w-md mx-auto">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 text-blue-600 hover:bg-blue-50"
+            className="flex-col h-auto py-2 text-roomzi-blue"
             onClick={() => navigate('/tenant')}
           >
             <Home className="w-5 h-5 mb-1" />
@@ -579,7 +560,7 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 hover:bg-blue-50"
+            className="flex-col h-auto py-2"
             onClick={() => navigate('/tenant/matches')}
           >
             <MessageCircle className="w-5 h-5 mb-1" />
@@ -588,7 +569,7 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 hover:bg-blue-50"
+            className="flex-col h-auto py-2"
             onClick={() => navigate('/tenant/my-house')}
           >
             <MapPin className="w-5 h-5 mb-1" />
@@ -597,7 +578,7 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 hover:bg-blue-50"
+            className="flex-col h-auto py-2"
             onClick={() => navigate('/tenant/profile')}
           >
             <Settings className="w-5 h-5 mb-1" />

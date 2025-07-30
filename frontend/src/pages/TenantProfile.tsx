@@ -65,7 +65,7 @@ const TenantProfile = () => {
   const [previewType, setPreviewType] = useState<'image' | 'pdf' | 'other'>('other');
 
   const tabs = [
-    { id: 'info', label: 'Information', icon: User },
+    { id: 'info', label: 'Personal Info', icon: User },
     { id: 'docs', label: 'Documents', icon: FileText },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -553,6 +553,14 @@ const TenantProfile = () => {
                 />
               </div>
             </div>
+            {!editMode && (
+              <Button 
+                className="mt-4 roomzi-gradient w-full"
+                onClick={() => setEditMode(true)}
+              >
+                Edit Information
+              </Button>
+            )}
           </Card>
         )}
         {activeTab === 'docs' && (

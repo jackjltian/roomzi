@@ -480,15 +480,6 @@ const LandlordDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2"
-            onClick={handleCreateListing}
-          >
-            <Plus className="w-5 h-5 mb-1" />
-            <span className="text-xs">Add Listing</span>
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
             className="flex-col h-auto py-2 relative"
             onClick={() => navigate('/landlord/maintenance-requests')}
           >
