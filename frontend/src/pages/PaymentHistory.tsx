@@ -220,7 +220,18 @@ const Payments = () => {
                 <DollarSign className="w-6 h-6 text-blue-500" />
                 <div>
                   <div className="text-lg font-semibold">${payment.amount.toLocaleString()}</div>
-                  <div className="text-gray-500 text-sm">{payment.date}</div>
+                  <div className="text-gray-500 text-sm">{new Date(payment.date).toLocaleDateString()}</div>
+                  {payment.month && (
+                    <div className="text-sm text-blue-600 font-medium">
+                      For: {(() => {
+                        const [year, month] = payment.month.split('-');
+                        return new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long'
+                        });
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-4 mt-2 md:mt-0">

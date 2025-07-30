@@ -6,6 +6,7 @@ import {
   updateTenant,
   deleteTenant,
   getTenantListings,
+  getTenantLeases,
 } from "../controllers/tenantController.js";
 import { autoCreateTenantProfile } from "../middleware/autoCreateProfile.js";
 
@@ -19,6 +20,9 @@ router.get("/:id", autoCreateTenantProfile, getTenantById);
 
 // GET /api/tenants/:id/listings - Get tenant's listings
 router.get("/:id/listings", autoCreateTenantProfile, getTenantListings);
+
+// GET /api/tenants/:id/leases - Get tenant's leases
+router.get("/:id/leases", autoCreateTenantProfile, getTenantLeases);
 
 // POST /api/tenants - Create new tenant
 router.post("/", createTenant);

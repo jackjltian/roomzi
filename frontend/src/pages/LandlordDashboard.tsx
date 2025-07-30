@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench } from 'lucide-react';
+import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench, DollarSign } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -174,6 +174,8 @@ const LandlordDashboard = () => {
               </div>
             </div>
           </Card>
+
+
         </div>
 
         {/* My Properties Section */}
