@@ -56,6 +56,8 @@ const TenantDashboard = () => {
   const [leaseId, setLeaseId] = useState<string | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [lastNotificationFetch, setLastNotificationFetch] = useState(0);
+  const [notificationRetryCount, setNotificationRetryCount] = useState(0);
 
   // Debug: Log current user info
   useEffect(() => {
@@ -95,38 +97,31 @@ const TenantDashboard = () => {
       fetchProfile();
       // Refresh all notifications when component comes into focus
       if (user?.id) {
-        const refreshNotifications = async () => {
-          setNotificationsLoading(true);
-          try {
-            console.log('Refreshing notifications on focus for tenant:', user.id);
-            const response = await getNotificationSummary(user.id, 'tenant');
-            
-            if (response?.data) {
-              const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
-              
-              setUnreadMessageCount(unreadMessages || 0);
-              
-              // Check for unsigned leases
-              const unsignedLease = newLeases?.find((lease: any) => lease.signed === false);
-              setHasNewLease(!!unsignedLease);
-              setLeaseId(unsignedLease?.id || null);
-            }
-          } catch (error) {
-            console.error('Error refreshing notifications:', error);
-            setUnreadMessageCount(0);
-            setHasNewLease(false);
-            setLeaseId(null);
-          } finally {
-            setNotificationsLoading(false);
+        // Debounce: only fetch if it's been more than 2 seconds since last fetch
+        const now = Date.now();
+        if (now - lastNotificationFetch < 2000) {
+          console.log('Skipping notification refresh - too soon since last fetch');
+          return;
+        }
+        
+        // Add a timeout to prevent infinite loading state
+        const timeoutId = setTimeout(() => {
+          setNotificationsLoading(false);
+          // Retry the notification fetch after timeout if we haven't exceeded retry limit
+          if (notificationRetryCount < 2) {
+            console.log('Retrying notification fetch after timeout');
+            setTimeout(() => fetchNotificationsWithRetry(true), 1000);
           }
-        };
+        }, 2000); // 2 second timeout
 
-        refreshNotifications();
+        fetchNotificationsWithRetry().finally(() => {
+          clearTimeout(timeoutId);
+        });
       }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [user?.id]);
+  }, [user?.id, lastNotificationFetch, notificationRetryCount]);
 
   useEffect(() => {
     const handleProfileUpdated = (e: any) => {
@@ -160,39 +155,53 @@ const TenantDashboard = () => {
     fetchViewings();
   }, [user]);
 
+  // Function to fetch notifications with retry logic
+  const fetchNotificationsWithRetry = async (isRetry = false) => {
+    if (!user?.id) return;
+    
+    if (isRetry) {
+      setNotificationRetryCount(prev => prev + 1);
+    }
+    
+    setNotificationsLoading(true);
+    setLastNotificationFetch(Date.now());
+    
+    try {
+      console.log(`Fetching notification summary for tenant: ${user.id}${isRetry ? ' (retry)' : ''}`);
+      const response = await getNotificationSummary(user.id, 'tenant');
+      
+      if (response?.data) {
+        const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+        
+        setUnreadMessageCount(unreadMessages || 0);
+        
+        // Check for unsigned leases
+        const unsignedLease = newLeases?.find((lease: any) => lease.signed === false);
+        setHasNewLease(!!unsignedLease);
+        setLeaseId(unsignedLease?.id || null);
+        
+        console.log('Notification summary loaded for tenant:', response.data);
+        setNotificationRetryCount(0); // Reset retry count on success
+      }
+    } catch (error) {
+      console.error('Error fetching notification summary:', error);
+      setUnreadMessageCount(0);
+      setHasNewLease(false);
+      setLeaseId(null);
+      
+      // Auto-retry on error if we haven't exceeded retry limit
+      if (!isRetry && notificationRetryCount < 2) {
+        console.log('Auto-retrying notification fetch due to error');
+        setTimeout(() => fetchNotificationsWithRetry(true), 1000);
+      }
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Check for all notifications to show notification badges
-    const checkForNotifications = async () => {
-      if (!user?.id) return;
-      
-      setNotificationsLoading(true);
-      try {
-        console.log('Fetching notification summary for tenant:', user.id);
-        const response = await getNotificationSummary(user.id, 'tenant');
-        
-        if (response?.data) {
-          const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
-          
-          setUnreadMessageCount(unreadMessages || 0);
-          
-          // Check for unsigned leases
-          const unsignedLease = newLeases?.find((lease: any) => lease.signed === false);
-          setHasNewLease(!!unsignedLease);
-          setLeaseId(unsignedLease?.id || null);
-          
-          console.log('Notification summary loaded for tenant:', response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching notification summary:', error);
-        setUnreadMessageCount(0);
-        setHasNewLease(false);
-        setLeaseId(null);
-      } finally {
-        setNotificationsLoading(false);
-      }
-    };
-
-    checkForNotifications();
+    fetchNotificationsWithRetry();
   }, [user]);
 
   const fetchProperties = async () => {
@@ -621,8 +630,8 @@ const TenantDashboard = () => {
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
             {notificationsLoading ? (
-              <span className="absolute -top-1 -right-1 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                <div className="w-2 h-2 bg-current rounded-full animate-ping"></div>
+              <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center animate-pulse">
+                <div className="w-2 h-2 bg-current rounded-full animate-spin"></div>
               </span>
             ) : (
               <>
@@ -634,6 +643,18 @@ const TenantDashboard = () => {
                 {unreadMessageCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
                     {unreadMessageCount}
+                  </span>
+                )}
+                {notificationRetryCount > 0 && (
+                  <span 
+                    className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5 cursor-pointer hover:bg-orange-600 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetchNotificationsWithRetry(true);
+                    }}
+                    title="Click to retry loading notifications"
+                  >
+                    🔄
                   </span>
                 )}
               </>
