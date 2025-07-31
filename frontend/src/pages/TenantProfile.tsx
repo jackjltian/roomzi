@@ -81,7 +81,6 @@ const TenantProfile = () => {
   const [preferredRentMin, setPreferredRentMin] = useState<number | undefined>();
   const [preferredRentMax, setPreferredRentMax] = useState<number | undefined>();
   const [preferredDistance, setPreferredDistance] = useState<number | undefined>();
-  const [savingPreferences, setSavingPreferences] = useState(false);
 
   const tabs = [
     { id: 'info', label: 'Personal Info', icon: User },
@@ -89,17 +88,39 @@ const TenantProfile = () => {
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
-  // Add function to save settings via API
-  const saveSettings = async () => {
+  // Combined function to save all settings and preferences
+  const saveAllSettings = async () => {
     if (!user?.id) return;
     
-    console.log('Saving settings:', { viewingRequestNotifications, rentReminderDays });
+    // Check if user has set their address for distance filtering
+    if (preferredDistance && !profileData?.address) {
+      toast({
+        title: "Address Required",
+        description: "Please set your current address in Personal Info to use distance filtering.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    console.log('Saving all settings:', { 
+      viewingRequestNotifications, 
+      rentReminderDays,
+      preferredHouseTypes,
+      preferredRentMin,
+      preferredRentMax,
+      preferredDistance
+    });
     
     setSavingSettings(true);
     try {
+      // Save all settings and preferences in one API call
       const updateResult = await tenantApi.update(user.id, {
         viewingRequestNotifications,
         rentReminderDays,
+        preferredHouseTypes,
+        preferredRentMin,
+        preferredRentMax,
+        preferredDistance,
       });
 
       console.log('Update result:', updateResult);
@@ -107,7 +128,7 @@ const TenantProfile = () => {
       if (updateResult.success) {
         toast({
           title: "Settings Saved",
-          description: "Your notification preferences have been updated.",
+          description: "All your settings and preferences have been updated.",
           variant: "default",
         });
       } else {
@@ -130,47 +151,7 @@ const TenantProfile = () => {
     }
   };
 
-  // Add function to save preferences via API
-  const savePreferences = async () => {
-    if (!user?.id) return;
-    
-    // Check if user has set their address for distance filtering
-    if (preferredDistance && !profileData?.address) {
-      toast({
-        title: "Address Required",
-        description: "Please set your current address in Personal Info to use distance filtering.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setSavingPreferences(true);
-    try {
-      const updateResult = await tenantApi.updatePreferences(user.id, {
-        preferredHouseTypes,
-        preferredRentMin,
-        preferredRentMax,
-        preferredDistance,
-      });
 
-      if (updateResult.success) {
-        toast({
-          title: "Preferences Saved",
-          description: "Your house preferences have been updated.",
-          variant: "default",
-        });
-      }
-    } catch (error) {
-      console.error('Error saving preferences:', error);
-      toast({
-        title: "Save Failed",
-        description: "Failed to save preferences. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingPreferences(false);
-    }
-  };
 
   // Add function to handle house type selection
   const handleHouseTypeToggle = (houseType: string) => {
@@ -840,28 +821,10 @@ const TenantProfile = () => {
                 </div>
               </div>
 
-              {/* Save Buttons */}
-              <div className="flex justify-end gap-4 pt-4">
+              {/* Save Button */}
+              <div className="flex justify-end pt-4">
                 <Button 
-                  onClick={savePreferences}
-                  disabled={savingPreferences}
-                  variant="outline"
-                  className="border-blue-600 text-blue-600 hover:bg-blue-50"
-                >
-                  {savingPreferences ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Preferences
-                    </>
-                  )}
-                </Button>
-                <Button 
-                  onClick={saveSettings}
+                  onClick={saveAllSettings}
                   disabled={savingSettings}
                   className="roomzi-gradient"
                 >

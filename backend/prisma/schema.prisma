@@ -142,6 +142,7 @@ model leases {
   rent            Float?
   signed          Boolean          @default(false)
   document        String?
+  landlordseen    Boolean?         // Preserve existing data
   listings        listings?        @relation(fields: [listing_id], references: [id], onDelete: NoAction)
   tenant_profiles tenant_profiles? @relation(fields: [tenant_id], references: [id], onDelete: NoAction)
 }

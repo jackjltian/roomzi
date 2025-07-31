@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
 import { getApiBaseUrl, getLeasesForTenant, tenantApi } from '@/utils/api';
 import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
-import { calculateDistance, parseCoordinates } from '@/lib/utils';
+import { calculateDistance, parseCoordinates, geocodeAddress } from '@/lib/utils';
 
 // Helper to safely parse JSON fields
 const parseMaybeJson = (value, fallback = []) => {
@@ -67,6 +67,10 @@ const TenantDashboard = () => {
     preferredDistance: undefined as number | undefined,
     address: '',
   });
+
+  // Add tenant coordinates state
+  const [tenantCoordinates, setTenantCoordinates] = useState<{ lat: number; lon: number } | null>(null);
+  const [geocodingComplete, setGeocodingComplete] = useState(false);
 
   // Debug: Log current user info
   useEffect(() => {
@@ -126,12 +130,22 @@ const TenantDashboard = () => {
 
   const fetchViewings = async () => {
     if (!user) return;
+    console.log('🔄 Fetching viewing requests for tenant:', user.id);
     setLoadingViewings(true);
     try {
-      // Fetch all requests for this tenant
-      const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`);
+      // Fetch all requests for this tenant with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      console.log('📡 Viewing requests response:', res);
       setViewings(res);
     } catch (err) {
+      console.error('❌ Error fetching viewing requests:', err);
       setViewings([]);
     } finally {
       setLoadingViewings(false);
@@ -192,14 +206,26 @@ const TenantDashboard = () => {
           landlordPhone: listing.landlord_phone,
           coordinates: (() => {
             try {
-              if (!listing.coordinates || listing.coordinates === 'null') return { lat: 0, lng: 0 };
+              if (!listing.coordinates || listing.coordinates === 'null') return null;
               if (typeof listing.coordinates === 'string') {
-                return JSON.parse(listing.coordinates);
+                const parsed = JSON.parse(listing.coordinates);
+                // Validate that we have valid lat/lng values
+                if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number' && 
+                    parsed.lat !== 0 && parsed.lng !== 0) {
+                  return parsed;
+                }
+                return null;
               }
-              return listing.coordinates;
+              // Validate that we have valid lat/lng values
+              if (listing.coordinates && typeof listing.coordinates.lat === 'number' && 
+                  typeof listing.coordinates.lng === 'number' && 
+                  listing.coordinates.lat !== 0 && listing.coordinates.lng !== 0) {
+                return listing.coordinates;
+              }
+              return null;
             } catch (e) {
               console.warn('Failed to parse coordinates:', listing.coordinates, e);
-              return { lat: 0, lng: 0 };
+              return null;
             }
           })(),
           available: listing.available,
@@ -207,6 +233,13 @@ const TenantDashboard = () => {
           requirements: parseMaybeJson(listing.requirements, []),
           houseRules: parseMaybeJson(listing.house_rules, []),
         }));
+        
+        // Debug: Log property coordinates
+        console.log('🔍 Loaded properties with coordinates:');
+        transformedProperties.forEach(prop => {
+          console.log(`${prop.address}: coordinates =`, prop.coordinates);
+        });
+        
         setProperties(transformedProperties);
       } else {
         toast({
@@ -254,9 +287,15 @@ const TenantDashboard = () => {
   const fetchTenantPreferences = async () => {
     if (!user) return;
     try {
-      const response = await tenantApi.getPreferences(user.id);
+      console.log('🔍 Fetching tenant preferences for user:', user.id);
+      // Fetch from main tenant profile instead of separate preferences endpoint
+      const response = await tenantApi.getById(user.id);
+      console.log('📡 Tenant profile API response:', response);
+      
       if (response.success && response.data) {
-        const data = response.data;
+        const data = response.data.data; // Note: nested data structure
+        console.log('📊 Raw tenant profile data:', data);
+        
         setTenantPreferences({
           preferredHouseTypes: data.preferredHouseTypes || [],
           preferredRentMin: data.preferredRentMin,
@@ -264,10 +303,40 @@ const TenantDashboard = () => {
           preferredDistance: data.preferredDistance,
           address: data.address || '',
         });
-        console.log('Tenant preferences loaded:', data);
+        console.log('✅ Tenant preferences loaded:', {
+          preferredHouseTypes: data.preferredHouseTypes || [],
+          preferredRentMin: data.preferredRentMin,
+          preferredRentMax: data.preferredRentMax,
+          preferredDistance: data.preferredDistance,
+          address: data.address || '',
+        });
+
+        // Geocode the tenant's address if available
+        if (data.address && data.preferredDistance !== undefined) {
+          console.log('🌍 Geocoding tenant address:', data.address);
+          const coords = await geocodeAddress(data.address);
+          setTenantCoordinates(coords);
+          setGeocodingComplete(true);
+          console.log('📍 Tenant coordinates:', coords);
+          
+          if (!coords) {
+            toast({
+              title: "Geocoding Failed",
+              description: `Could not find coordinates for address: ${data.address}. Distance filtering will be disabled.`,
+              variant: "destructive",
+            });
+          } else {
+            console.log(`✅ Successfully geocoded ${data.address} to:`, coords);
+          }
+        } else {
+          console.log('⚠️ No address or distance preference set, skipping geocoding');
+          setGeocodingComplete(true);
+        }
+      } else {
+        console.log('❌ Preferences API call failed:', response);
       }
     } catch (err) {
-      console.error('Error fetching tenant preferences:', err);
+      console.error('❌ Error fetching tenant preferences:', err);
     }
   };
 
@@ -305,17 +374,31 @@ const TenantDashboard = () => {
     }
 
     // Distance filtering
-    if (tenantPreferences.preferredDistance !== undefined && tenantPreferences.address) {
-      const tenantCoords = parseCoordinates(tenantPreferences.address);
-      if (tenantCoords && property.coordinates && property.coordinates.lat && property.coordinates.lng) {
+    if (tenantPreferences.preferredDistance !== undefined && geocodingComplete) {
+      console.log(`Distance filtering enabled: ${tenantPreferences.preferredDistance} miles from ${tenantPreferences.address}`);
+      console.log(`Tenant coordinates:`, tenantCoordinates);
+      console.log(`Property coordinates:`, property.coordinates);
+      
+      if (tenantCoordinates && property.coordinates && property.coordinates.lat && property.coordinates.lng) {
         const distance = calculateDistance(
-          tenantCoords.lat,
-          tenantCoords.lon,
+          tenantCoordinates.lat,
+          tenantCoordinates.lon,
           property.coordinates.lat,
           property.coordinates.lng
         );
+        console.log(`Distance from ${tenantPreferences.address} to ${property.address}: ${distance} miles (max: ${tenantPreferences.preferredDistance})`);
         matchesDistance = distance <= tenantPreferences.preferredDistance;
+        console.log(`Property ${property.address} distance match:`, matchesDistance);
+      } else {
+        // If property doesn't have valid coordinates, filter it out when distance filtering is enabled
+        console.log(`Property ${property.address} has no valid coordinates, filtering it out due to distance preference`);
+        matchesDistance = false;
       }
+    } else if (tenantPreferences.preferredDistance !== undefined && !geocodingComplete) {
+      console.log('Geocoding in progress, allowing all properties through temporarily');
+      matchesDistance = true;
+    } else {
+      console.log('Distance filtering not enabled');
     }
 
     return matchesSearch && matchesType && matchesPrice && matchesDistance;
@@ -465,34 +548,6 @@ const TenantDashboard = () => {
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
-          {/* Preferences Indicator */}
-          {(tenantPreferences.preferredHouseTypes.length > 0 || 
-            tenantPreferences.preferredRentMin !== undefined || 
-            tenantPreferences.preferredRentMax !== undefined || 
-            tenantPreferences.preferredDistance !== undefined) && (
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-medium text-blue-900 text-sm">Using Your Preferences</h3>
-                  <p className="text-xs text-blue-700">
-                    {tenantPreferences.preferredHouseTypes.length > 0 && `Types: ${tenantPreferences.preferredHouseTypes.join(', ')} `}
-                    {(tenantPreferences.preferredRentMin !== undefined || tenantPreferences.preferredRentMax !== undefined) && 
-                      `Rent: $${tenantPreferences.preferredRentMin || 0} - $${tenantPreferences.preferredRentMax || '∞'} `}
-                    {tenantPreferences.preferredDistance !== undefined && `Within ${tenantPreferences.preferredDistance} miles`}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/tenant/profile')}
-                  className="text-blue-600 border-blue-600 hover:bg-blue-50 text-xs"
-                >
-                  <Settings className="w-3 h-3 mr-1" />
-                  Edit
-                </Button>
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-col lg:flex-row gap-4 mb-4">
             <div className="relative flex-1">

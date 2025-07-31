@@ -105,17 +105,49 @@ const getViewingRequestsForLandlord = async (req, res) => {
 const getViewingRequestsForTenant = async (req, res) => {
   try {
     const { tenantId } = req.query;
+    console.log("🔄 Fetching viewing requests for tenant:", tenantId);
+
     if (!tenantId) {
       return res.status(400).json({ error: "Missing tenantId." });
     }
+
+    const startTime = Date.now();
     const requests = await prisma.viewingRequest.findMany({
       where: { tenantId },
-      include: { listings: true, landlord_profiles: true },
+      include: { 
+        listings: {
+          select: {
+            id: true,
+            title: true,
+            address: true,
+            city: true,
+            state: true,
+            price: true,
+            type: true,
+            images: true,
+          }
+        }, 
+        landlord_profiles: {
+          select: {
+            id: true,
+            full_name: true,
+            email: true,
+            phone: true,
+          }
+        } 
+      },
       orderBy: { createdAt: "desc" },
     });
+    const endTime = Date.now();
+
+    console.log(
+      `✅ Found ${requests.length} viewing requests in ${endTime - startTime}ms`
+    );
+    console.log("📊 Viewing requests data:", requests);
+
     res.json(convertBigIntToString(requests));
   } catch (error) {
-    console.error("Error fetching viewing requests for tenant:", error);
+    console.error("❌ Error fetching viewing requests for tenant:", error);
     res.status(500).json({ error: "Failed to fetch viewing requests." });
   }
 };
