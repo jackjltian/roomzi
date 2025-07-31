@@ -7,7 +7,7 @@ import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
-import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { apiFetch, getApiBaseUrl, getNotificationSummary } from '@/utils/api';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ const LandlordDashboard = () => {
   const [proposeRequestId, setProposeRequestId] = useState(null);
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
 
   // Get user's name from metadata or email
@@ -89,95 +90,43 @@ const LandlordDashboard = () => {
   }, [userId]);
 
   useEffect(() => {
-    async function fetchPendingMaintenance() {
+    async function fetchAllNotifications() {
       if (!userId) return;
-      const lastSeen = localStorage.getItem('maintenance_last_seen') || '0';
-      const { data, error } = await supabase
-        .from('maintenance_requests')
-        .select('createdAt', { count: 'exact' })
-        .eq('landlordId', userId)
-        .eq('status', 'Pending');
-      if (!error && data) {
-        const newRequests = data.filter((r) => new Date(r.createdAt).getTime() > Number(lastSeen));
-        setPendingMaintenanceCount(newRequests.length);
-        setShowBanner(newRequests.length > 0);
-      }
-    }
-
-    async function checkForUnreadMessages() {
-      if (!userId) return;
+      
+      setNotificationsLoading(true);
       try {
-        const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${userId}/landlord`);
-        const chatArray = response?.data;
-        if (chatArray && Array.isArray(chatArray)) {
-          const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
-          setUnreadMessageCount(unreadCount);
+        console.log('Fetching notification summary for landlord:', userId);
+        const response = await getNotificationSummary(userId, 'landlord');
+        
+        if (response?.data) {
+          const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+          
+          // Update all notification states at once
+          setUnreadMessageCount(unreadMessages || 0);
+          setPendingMaintenanceCount(pendingMaintenance || 0);
+          setNewlySignedLeases(newLeases || []);
+          setPendingViewingCount(pendingViewings || 0);
+          
+          // Show banner if there are pending maintenance requests
+          setShowBanner((pendingMaintenance || 0) > 0);
+          
+          console.log('Notification summary loaded:', response.data);
         }
-      } catch (err) {
+      } catch (error) {
+        console.error('Error fetching notification summary:', error);
+        // Set defaults on error
         setUnreadMessageCount(0);
+        setPendingMaintenanceCount(0);
+        setNewlySignedLeases([]);
+        setPendingViewingCount(0);
+        setShowBanner(false);
+      } finally {
+        setNotificationsLoading(false);
       }
     }
 
-    async function checkForNewlySignedLeases() {
-      if (!userId) return;
-      try {
-        // Fetch all leases for this landlord's properties
-        const listingsResponse = await fetch(`${getApiBaseUrl()}/api/landlords/${userId}/listings`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include',
-        });
-        
-        if (!listingsResponse.ok) return;
-        
-        const listingsData = await listingsResponse.json();
-        const listings = listingsData.data || listingsData;
-        
-        // Get leases for each listing
-        const allLeases: any[] = [];
-        for (const listing of listings) {
-          try {
-            // Check if there's a lease for this listing by property ID
-            const leaseResponse = await fetch(`${getApiBaseUrl()}/api/leases/listing/${listing.id}`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              credentials: 'include',
-            });
-            
-            if (leaseResponse.ok) {
-              const leaseData = await leaseResponse.json();
-              if (leaseData.data && Array.isArray(leaseData.data)) {
-                allLeases.push(...leaseData.data);
-              } else if (leaseData.data) {
-                allLeases.push(leaseData.data);
-              }
-            }
-          } catch (err) {
-            console.error(`Error fetching leases for listing ${listing.id}:`, err);
-          }
-        }
-        
-        // Filter for signed leases that haven't been seen by landlord
-        const unseenSignedLeases = allLeases.filter((lease: any) => {
-          // Only show banner for leases that are signed AND haven't been seen by landlord
-          return lease.signed === true && lease.landlordseen === false;
-        });
-        
-        // Set the unseen signed leases for banner display
-        setNewlySignedLeases(unseenSignedLeases);
-      } catch (err) {
-        console.error('Error checking for newly signed leases:', err);
-      }
-    }
-
-    fetchPendingMaintenance();
-    checkForUnreadMessages();
-    checkForNewlySignedLeases();
-  }, [userId, toast]);
+    fetchAllNotifications();
+  }, [userId]);
 
 
 
@@ -185,19 +134,25 @@ const LandlordDashboard = () => {
   useEffect(() => {
     const handleFocus = () => {
       if (userId) {
-        async function checkForUnreadMessages() {
+        async function refreshNotifications() {
           try {
-            const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${userId}/landlord`);
-            const chatArray = response?.data;
-            if (chatArray && Array.isArray(chatArray)) {
-              const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
-              setUnreadMessageCount(unreadCount);
+            console.log('Refreshing notifications on focus for landlord:', userId);
+            const response = await getNotificationSummary(userId, 'landlord');
+            
+            if (response?.data) {
+              const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+              
+              setUnreadMessageCount(unreadMessages || 0);
+              setPendingMaintenanceCount(pendingMaintenance || 0);
+              setNewlySignedLeases(newLeases || []);
+              setPendingViewingCount(pendingViewings || 0);
+              setShowBanner((pendingMaintenance || 0) > 0);
             }
-          } catch (err) {
-            setUnreadMessageCount(0);
+          } catch (error) {
+            console.error('Error refreshing notifications:', error);
           }
         }
-        checkForUnreadMessages();
+        refreshNotifications();
       }
     };
 
@@ -582,7 +537,11 @@ const LandlordDashboard = () => {
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
-            {unreadMessageCount > 0 && (
+            {notificationsLoading ? (
+              <span className="absolute -top-1 -right-1 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                <div className="w-2 h-2 bg-current rounded-full animate-ping"></div>
+              </span>
+            ) : unreadMessageCount > 0 && (
               <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
                 {unreadMessageCount}
               </span>
@@ -605,7 +564,11 @@ const LandlordDashboard = () => {
           >
             <Wrench className="w-5 h-5 mb-1" />
             <span className="text-xs">Maintenance</span>
-            {pendingMaintenanceCount > 0 && (
+            {notificationsLoading ? (
+              <span className="absolute top-0 right-0 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5">
+                <div className="w-2 h-2 bg-current rounded-full animate-ping"></div>
+              </span>
+            ) : pendingMaintenanceCount > 0 && (
               <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
                 {pendingMaintenanceCount}
               </span>

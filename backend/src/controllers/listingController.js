@@ -4,6 +4,7 @@ import {
   errorResponse,
   paginatedResponse,
 } from "../utils/response.js";
+import { updateChatNamesForListing } from "../utils/chatNameUpdater.js";
 
 // Get all listings with pagination and filtering
 export const getListings = async (req, res) => {
@@ -320,6 +321,8 @@ export const createListing = async (req, res) => {
   }
 };
 
+
+
 // Update listing
 export const updateListing = async (req, res) => {
   try {
@@ -348,6 +351,11 @@ export const updateListing = async (req, res) => {
         },
       },
     });
+
+    // Update chat names if title was changed
+    if (updateData.title) {
+      await updateChatNamesForListing(id, updateData.title);
+    }
 
     // Convert BigInt to string for JSON serialization
     const responseData = {

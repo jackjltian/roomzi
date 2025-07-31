@@ -1,6 +1,6 @@
 import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
-import { supabase } from "../config/supabase.js";
+import { updateChatNamesForLandlord } from "../utils/chatNameUpdater.js";
 
 // Helper function to convert BigInt to string for JSON serialization
 const convertBigIntToString = (obj) => {
@@ -48,6 +48,8 @@ function normalizeDocuments(docs) {
     })
     .filter(Boolean);
 }
+
+
 
 // Get all landlords
 export const getLandlords = async (req, res) => {
@@ -173,6 +175,11 @@ export const updateLandlord = async (req, res) => {
       where: { id },
       data: updateData,
     });
+
+    // Update chat names if full_name was changed
+    if (full_name) {
+      await updateChatNamesForLandlord(id, full_name);
+    }
 
     // Real-time sync: update tenant profile if exists
     const tenantProfile = await prisma.tenant_profiles.findUnique({

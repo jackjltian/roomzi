@@ -10,7 +10,7 @@ import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
-import { getApiBaseUrl, getLeasesForTenant } from '@/utils/api';
+import { getApiBaseUrl, getLeasesForTenant, getNotificationSummary } from '@/utils/api';
 import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
 
 // Helper to safely parse JSON fields
@@ -55,6 +55,7 @@ const TenantDashboard = () => {
   const [hasNewLease, setHasNewLease] = useState(false);
   const [leaseId, setLeaseId] = useState<string | null>(null);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
 
   // Debug: Log current user info
   useEffect(() => {
@@ -92,37 +93,35 @@ const TenantDashboard = () => {
   useEffect(() => {
     const handleFocus = () => {
       fetchProfile();
-      // Also refresh lease status and unread messages when component comes into focus
+      // Refresh all notifications when component comes into focus
       if (user?.id) {
-        const checkForNewLeases = async () => {
+        const refreshNotifications = async () => {
+          setNotificationsLoading(true);
           try {
-            const response = await getLeasesForTenant(user.id);
-            if (response.success && Array.isArray(response.data)) {
-              const unsignedLease = response.data.find((lease: any) => lease.signed === false);
+            console.log('Refreshing notifications on focus for tenant:', user.id);
+            const response = await getNotificationSummary(user.id, 'tenant');
+            
+            if (response?.data) {
+              const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+              
+              setUnreadMessageCount(unreadMessages || 0);
+              
+              // Check for unsigned leases
+              const unsignedLease = newLeases?.find((lease: any) => lease.signed === false);
               setHasNewLease(!!unsignedLease);
               setLeaseId(unsignedLease?.id || null);
             }
-          } catch (err) {
+          } catch (error) {
+            console.error('Error refreshing notifications:', error);
+            setUnreadMessageCount(0);
             setHasNewLease(false);
             setLeaseId(null);
+          } finally {
+            setNotificationsLoading(false);
           }
         };
 
-        const checkForUnreadMessages = async () => {
-          try {
-            const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${user.id}/tenant`);
-            const chatArray = response?.data;
-            if (chatArray && Array.isArray(chatArray)) {
-              const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
-              setUnreadMessageCount(unreadCount);
-            }
-          } catch (err) {
-            setUnreadMessageCount(0);
-          }
-        };
-
-        checkForNewLeases();
-        checkForUnreadMessages();
+        refreshNotifications();
       }
     };
     window.addEventListener('focus', handleFocus);
@@ -162,38 +161,38 @@ const TenantDashboard = () => {
   }, [user]);
 
   useEffect(() => {
-    // Check for new leases and unread messages to show notification badges on matches tab
-    const checkForNewLeases = async () => {
+    // Check for all notifications to show notification badges
+    const checkForNotifications = async () => {
       if (!user?.id) return;
+      
+      setNotificationsLoading(true);
       try {
-        const response = await getLeasesForTenant(user.id);
-        if (response.success && Array.isArray(response.data)) {
-          const unsignedLease = response.data.find((lease: any) => lease.signed === false);
+        console.log('Fetching notification summary for tenant:', user.id);
+        const response = await getNotificationSummary(user.id, 'tenant');
+        
+        if (response?.data) {
+          const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+          
+          setUnreadMessageCount(unreadMessages || 0);
+          
+          // Check for unsigned leases
+          const unsignedLease = newLeases?.find((lease: any) => lease.signed === false);
           setHasNewLease(!!unsignedLease);
           setLeaseId(unsignedLease?.id || null);
+          
+          console.log('Notification summary loaded for tenant:', response.data);
         }
-      } catch (err) {
+      } catch (error) {
+        console.error('Error fetching notification summary:', error);
+        setUnreadMessageCount(0);
         setHasNewLease(false);
         setLeaseId(null);
+      } finally {
+        setNotificationsLoading(false);
       }
     };
 
-    const checkForUnreadMessages = async () => {
-      if (!user?.id) return;
-      try {
-        const response = await apiFetch(`${getApiBaseUrl()}/api/chats/user/${user.id}/tenant`);
-        const chatArray = response?.data;
-        if (chatArray && Array.isArray(chatArray)) {
-          const unreadCount = chatArray.filter((chat: any) => chat.unread).length;
-          setUnreadMessageCount(unreadCount);
-        }
-      } catch (err) {
-        setUnreadMessageCount(0);
-      }
-    };
-
-    checkForNewLeases();
-    checkForUnreadMessages();
+    checkForNotifications();
   }, [user]);
 
   const fetchProperties = async () => {
@@ -621,15 +620,23 @@ const TenantDashboard = () => {
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
-            {hasNewLease && (
-              <span className="absolute -top-1 -left-1 bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse">
-                📄
+            {notificationsLoading ? (
+              <span className="absolute -top-1 -right-1 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                <div className="w-2 h-2 bg-current rounded-full animate-ping"></div>
               </span>
-            )}
-            {unreadMessageCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
-                {unreadMessageCount}
-              </span>
+            ) : (
+              <>
+                {hasNewLease && (
+                  <span className="absolute -top-1 -left-1 bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse">
+                    📄
+                  </span>
+                )}
+                {unreadMessageCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
+                    {unreadMessageCount}
+                  </span>
+                )}
+              </>
             )}
           </Button>
           <Button 

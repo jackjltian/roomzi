@@ -644,3 +644,14 @@ export const getLeaseHistoryForTenantAndListing = async (tenantId: string, listi
   const url = `${getApiBaseUrl()}/api/leases/history?tenantId=${tenantId}&listingId=${listingId}`;
   return apiFetch(url);
 };
+
+// Get notification summary (all notifications in one request)
+export const getNotificationSummary = async (userId: string, userType: 'tenant' | 'landlord') => {
+  try {
+    const response = await apiFetch(`${getApiBaseUrl()}/api/notifications/summary/${userId}/${userType}`);
+    return response;
+  } catch (error) {
+    console.error('Error fetching notification summary:', error);
+    throw error;
+  }
+};
