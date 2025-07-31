@@ -3,12 +3,17 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, ArrowLeft, Calendar, Settings, MessageCircle } from 'lucide-react';
+import { MapPin, Home, User, ArrowLeft, Settings, MessageCircle } from 'lucide-react';
 import { sampleProperties } from '@/data/sampleProperties';
 import Map from '@/components/Map';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { useAuth } from '@/context/AuthContext';
 
 // Helper to safely parse images field
 function parseImages(images) {
@@ -50,6 +55,11 @@ const PropertyDetails = () => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedTime, setSelectedTime] = useState('');
+  const { toast } = useToast();
+  const { user } = useAuth();
   
   useEffect(() => {
     const fetchProperty = async () => {
@@ -245,8 +255,8 @@ const PropertyDetails = () => {
                 >
                   Send Message
                 </Button>
-                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
-                  <Calendar className="w-4 h-4 mr-2" />
+                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200" onClick={() => setIsScheduleModalOpen(true)}>
+                  <CalendarIcon className="w-4 h-4 mr-2" />
                   Schedule Viewing
                 </Button>
                 <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
@@ -319,6 +329,74 @@ const PropertyDetails = () => {
           </Button>
         </div>
       </nav>
+
+      <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogTitle>Schedule a Viewing</DialogTitle>
+          <DialogDescription>Select a date and time for your viewing request.</DialogDescription>
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-1 font-medium">Date</label>
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                initialFocus
+              />
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Time</label>
+              <input
+                type="time"
+                className="border rounded px-3 py-2 w-full"
+                value={selectedTime}
+                onChange={e => setSelectedTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={!selectedDate || !selectedTime}
+              onClick={async () => {
+                if (!selectedDate || !selectedTime) return;
+                try {
+                  // Combine date and time into ISO string
+                  const [hours, minutes] = selectedTime.split(':');
+                  const dateTime = new Date(selectedDate);
+                  dateTime.setHours(Number(hours));
+                  dateTime.setMinutes(Number(minutes));
+                  // Debug log
+                  console.log('Scheduling viewing:', {
+                    propertyId: property.id,
+                    tenantId: user.id,
+                    landlordId: property.landlordId,
+                    requestedDateTime: dateTime.toISOString(),
+                    selectedDate,
+                    selectedTime,
+                    dateTime,
+                  });
+                  // Prepare payload
+                  await apiFetch(`${getApiBaseUrl()}/api/viewings`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      propertyId: property.id,
+                      tenantId: user.id,
+                      landlordId: property.landlordId,
+                      requestedDateTime: dateTime.toISOString(),
+                    }),
+                  });
+                  setIsScheduleModalOpen(false);
+                  toast({ title: 'Viewing request submitted!', description: `Requested for ${format(selectedDate, 'PPP')} at ${selectedTime}` });
+                } catch (err) {
+                  toast({ title: 'Error', description: 'Failed to submit viewing request', variant: 'destructive' });
+                }
+              }}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

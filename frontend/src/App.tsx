@@ -33,6 +33,8 @@ import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
 import TenantMaintenanceRequest from "./pages/TenantMaintenanceRequest";
 import LandlordMaintenanceRequests from "./pages/LandlordMaintenanceRequests";
+import LandlordViewingRequests from "./pages/LandlordViewingRequests";
+
 import TenantLease from './pages/TenantLease';
 import TenantLeasedProperties from "./pages/TenantLeasedProperties";
 import RenewLease from "./pages/RenewLease";
@@ -130,6 +132,8 @@ const App = () => (
                       <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
 
                       <Route path="maintenance-requests" element={<LandlordMaintenanceRequests />} />
+                      <Route path="viewing-requests" element={<LandlordViewingRequests />} />
+
                       <Route path="lease-agreement/:listingId" element={<LandlordLeaseAgreement />} />
                     </Routes>
                   </RoleProtectedRoute>
