@@ -502,7 +502,7 @@ const LandlordDashboard = () => {
             onClick={() => navigate('/landlord/profile')}
           >
             <Settings className="w-5 h-5 mb-1" />
-            <span className="text-xs">Profile</span>
+            <span className="text-xs font-medium">Profile</span>
           </Button>
         </div>
       </nav>

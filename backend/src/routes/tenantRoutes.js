@@ -6,6 +6,8 @@ import {
   updateTenant,
   deleteTenant,
   getTenantListings,
+  getTenantPreferences,
+  updateTenantPreferences,
 } from "../controllers/tenantController.js";
 import { autoCreateTenantProfile } from "../middleware/autoCreateProfile.js";
 
@@ -28,5 +30,11 @@ router.put("/:id", autoCreateTenantProfile, updateTenant);
 
 // DELETE /api/tenants/:id - Delete tenant
 router.delete("/:id", autoCreateTenantProfile, deleteTenant);
+
+// GET /api/tenants/:id/preferences - Get tenant preferences
+router.get("/:id/preferences", autoCreateTenantProfile, getTenantPreferences);
+
+// PUT /api/tenants/:id/preferences - Update tenant preferences
+router.put("/:id/preferences", autoCreateTenantProfile, updateTenantPreferences);
 
 export default router;

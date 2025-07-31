@@ -9,6 +9,7 @@ import { ArrowLeft, User, Camera, FileText, Settings, Home, Loader2, Save, X, Do
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
 
 import { landlordApi, ApiError, apiFetch, getApiBaseUrl, tenantApi } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
@@ -25,6 +26,12 @@ interface TenantProfileData {
   documents?: Array<{ path: string; displayName: string }>;
   created_at?: string;
   updated_at?: string;
+  viewingRequestNotifications?: boolean;
+  rentReminderDays?: number;
+  preferredHouseTypes?: string[];
+  preferredRentMin?: number;
+  preferredRentMax?: number;
+  preferredDistance?: number;
 }
 
 const TenantProfile = () => {
@@ -64,12 +71,117 @@ const TenantProfile = () => {
   const [previewName, setPreviewName] = useState<string>('');
   const [previewType, setPreviewType] = useState<'image' | 'pdf' | 'other'>('other');
 
+  // Add state for settings
+  const [viewingRequestNotifications, setViewingRequestNotifications] = useState(true);
+  const [rentReminderDays, setRentReminderDays] = useState(3);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Add state for preferences
+  const [preferredHouseTypes, setPreferredHouseTypes] = useState<string[]>([]);
+  const [preferredRentMin, setPreferredRentMin] = useState<number | undefined>();
+  const [preferredRentMax, setPreferredRentMax] = useState<number | undefined>();
+  const [preferredDistance, setPreferredDistance] = useState<number | undefined>();
+  const [savingPreferences, setSavingPreferences] = useState(false);
+
   const tabs = [
     { id: 'info', label: 'Personal Info', icon: User },
     { id: 'docs', label: 'Documents', icon: FileText },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
+  // Add function to save settings via API
+  const saveSettings = async () => {
+    if (!user?.id) return;
+    
+    console.log('Saving settings:', { viewingRequestNotifications, rentReminderDays });
+    
+    setSavingSettings(true);
+    try {
+      const updateResult = await tenantApi.update(user.id, {
+        viewingRequestNotifications,
+        rentReminderDays,
+      });
+
+      console.log('Update result:', updateResult);
+
+      if (updateResult.success) {
+        toast({
+          title: "Settings Saved",
+          description: "Your notification preferences have been updated.",
+          variant: "default",
+        });
+      } else {
+        console.error('Update failed:', updateResult);
+        toast({
+          title: "Save Failed",
+          description: "Failed to save settings. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Add function to save preferences via API
+  const savePreferences = async () => {
+    if (!user?.id) return;
+    
+    // Check if user has set their address for distance filtering
+    if (preferredDistance && !profileData?.address) {
+      toast({
+        title: "Address Required",
+        description: "Please set your current address in Personal Info to use distance filtering.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setSavingPreferences(true);
+    try {
+      const updateResult = await tenantApi.updatePreferences(user.id, {
+        preferredHouseTypes,
+        preferredRentMin,
+        preferredRentMax,
+        preferredDistance,
+      });
+
+      if (updateResult.success) {
+        toast({
+          title: "Preferences Saved",
+          description: "Your house preferences have been updated.",
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save preferences. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
+
+  // Add function to handle house type selection
+  const handleHouseTypeToggle = (houseType: string) => {
+    setPreferredHouseTypes(prev => 
+      prev.includes(houseType)
+        ? prev.filter(type => type !== houseType)
+        : [...prev, houseType]
+    );
+  };
+
+  // Update useEffect to fetch settings from API
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return;
@@ -87,6 +199,14 @@ const TenantProfile = () => {
             address: result.data.data.address || '',
           });
           setDocuments(result.data.data.documents || []);
+          // Set settings from API response
+          setViewingRequestNotifications(result.data.data.viewingRequestNotifications ?? true);
+          setRentReminderDays(result.data.data.rentReminderDays ?? 3);
+          // Set preferences from API response
+          setPreferredHouseTypes(result.data.data.preferredHouseTypes || []);
+          setPreferredRentMin(result.data.data.preferredRentMin);
+          setPreferredRentMax(result.data.data.preferredRentMax);
+          setPreferredDistance(result.data.data.preferredDistance);
         } else {
           // Create profile if not found with user's auth data
           const createResult = await tenantApi.create(user.id, user.email || '', user.user_metadata);
@@ -99,6 +219,14 @@ const TenantProfile = () => {
               address: createResult.data.data.address || '',
             });
             setDocuments(createResult.data.data.documents || []);
+            // Set settings from created profile
+            setViewingRequestNotifications(createResult.data.data.viewingRequestNotifications ?? true);
+            setRentReminderDays(createResult.data.data.rentReminderDays ?? 3);
+            // Set preferences from created profile
+            setPreferredHouseTypes(createResult.data.data.preferredHouseTypes || []);
+            setPreferredRentMin(createResult.data.data.preferredRentMin);
+            setPreferredRentMax(createResult.data.data.preferredRentMax);
+            setPreferredDistance(createResult.data.data.preferredDistance);
             setEditMode(true);
           }
         }
@@ -434,16 +562,6 @@ const TenantProfile = () => {
               <Badge className="mt-2 bg-green-100 text-green-800">Verified</Badge>
             </div>
             <div className="flex gap-2">
-              {!editMode && (
-                <Button
-                  onClick={() => setEditMode(true)}
-                  variant="outline"
-                  className="flex items-center"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </Button>
-              )}
               <Button
                 onClick={handleSwitchToLandlord}
                 variant="outline"
@@ -520,6 +638,7 @@ const TenantProfile = () => {
                   value={formData.full_name}
                   onChange={(e) => handleInputChange('full_name', e.target.value)}
                   disabled={!editMode}
+                  placeholder="Enter your full name"
                 />
               </div>
               <div>
@@ -530,6 +649,8 @@ const TenantProfile = () => {
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   disabled={!editMode}
+                  type="email"
+                  placeholder="Enter your email"
                 />
               </div>
               <div>
@@ -540,6 +661,8 @@ const TenantProfile = () => {
                   value={formData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   disabled={!editMode}
+                  type="tel"
+                  placeholder="Enter your phone number"
                 />
               </div>
               <div>
@@ -550,12 +673,13 @@ const TenantProfile = () => {
                   value={formData.address}
                   onChange={(e) => handleInputChange('address', e.target.value)}
                   disabled={!editMode}
+                  placeholder="Enter your address"
                 />
               </div>
             </div>
             {!editMode && (
               <Button 
-                className="mt-4 roomzi-gradient w-full"
+                className="mt-4 roomzi-gradient"
                 onClick={() => setEditMode(true)}
               >
                 Edit Information
@@ -588,8 +712,173 @@ const TenantProfile = () => {
         )}
         {activeTab === 'settings' && (
           <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Settings</h3>
-            <p>No settings available for tenants yet.</p>
+            <h3 className="text-lg font-semibold mb-6">Settings</h3>
+            <div className="space-y-8">
+              {/* Notification Settings */}
+              <div>
+                <h4 className="text-lg font-medium mb-4">Notification Settings</h4>
+                <div className="space-y-4">
+                  {/* a) Viewing Request Notifications */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h5 className="font-medium">Viewing Request Notifications</h5>
+                      <p className="text-sm text-gray-600">Enable notifications for viewing request updates</p>
+                    </div>
+                                    <Switch
+                  checked={viewingRequestNotifications}
+                  onCheckedChange={(checked) => {
+                    console.log('Toggle changed:', checked);
+                    setViewingRequestNotifications(checked);
+                  }}
+                />
+                  </div>
+                  {/* b) Rent Payment Reminder Days */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h5 className="font-medium">Rent Payment Reminder</h5>
+                      <p className="text-sm text-gray-600">Number of days before rent due to receive a reminder</p>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={rentReminderDays}
+                      onChange={e => setRentReminderDays(Number(e.target.value))}
+                      className="w-20 border rounded px-2 py-1 text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* House Preferences */}
+              <div>
+                <h4 className="text-lg font-medium mb-4">House Preferences</h4>
+                <div className="space-y-6">
+                  {/* House Type Preferences */}
+                  <div>
+                    <h5 className="font-medium mb-3">Preferred House Types</h5>
+                    <p className="text-sm text-gray-600 mb-3">Select the types of properties you're interested in</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {['room', 'apartment', 'house', 'condo'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => handleHouseTypeToggle(type)}
+                          className={`p-3 border rounded-lg text-sm font-medium transition-colors ${
+                            preferredHouseTypes.includes(type)
+                              ? 'bg-blue-50 border-blue-500 text-blue-700'
+                              : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Rent Range Preferences */}
+                  <div>
+                    <h5 className="font-medium mb-3">Rent Range</h5>
+                    <p className="text-sm text-gray-600 mb-3">Set your preferred monthly rent range</p>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Minimum Rent ($)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="100"
+                          value={preferredRentMin || ''}
+                          onChange={(e) => setPreferredRentMin(e.target.value ? Number(e.target.value) : undefined)}
+                          placeholder="e.g., 1000"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Maximum Rent ($)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="100"
+                          value={preferredRentMax || ''}
+                          onChange={(e) => setPreferredRentMax(e.target.value ? Number(e.target.value) : undefined)}
+                          placeholder="e.g., 3000"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Distance Preferences */}
+                  <div>
+                    <h5 className="font-medium mb-3">Maximum Distance</h5>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {profileData?.address 
+                        ? "Set the maximum distance from your current location"
+                        : "Please set your current address in Personal Info to use distance filtering"
+                      }
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={preferredDistance || ''}
+                        onChange={(e) => setPreferredDistance(e.target.value ? Number(e.target.value) : undefined)}
+                        placeholder="e.g., 10"
+                        disabled={!profileData?.address}
+                        className="w-32"
+                      />
+                      <span className="text-sm text-gray-600">miles</span>
+                    </div>
+                    {!profileData?.address && (
+                      <p className="text-sm text-orange-600 mt-2">
+                        ⚠️ Distance filtering requires your current address to be set
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Buttons */}
+              <div className="flex justify-end gap-4 pt-4">
+                <Button 
+                  onClick={savePreferences}
+                  disabled={savingPreferences}
+                  variant="outline"
+                  className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                >
+                  {savingPreferences ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Preferences
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  onClick={saveSettings}
+                  disabled={savingSettings}
+                  className="roomzi-gradient"
+                >
+                  {savingSettings ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </Card>
         )}
       </div>

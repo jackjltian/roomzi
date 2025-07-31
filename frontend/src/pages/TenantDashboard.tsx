@@ -10,8 +10,9 @@ import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
-import { getApiBaseUrl, getLeasesForTenant } from '@/utils/api';
+import { getApiBaseUrl, getLeasesForTenant, tenantApi } from '@/utils/api';
 import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
+import { calculateDistance, parseCoordinates } from '@/lib/utils';
 
 // Helper to safely parse JSON fields
 const parseMaybeJson = (value, fallback = []) => {
@@ -55,6 +56,18 @@ const TenantDashboard = () => {
   const [hasNewLease, setHasNewLease] = useState(false); // now real data
   const [leaseId, setLeaseId] = useState<string | null>(null);
 
+  // Add notification settings state
+  const [viewingRequestNotifications, setViewingRequestNotifications] = useState(true);
+
+  // Add tenant preferences state
+  const [tenantPreferences, setTenantPreferences] = useState({
+    preferredHouseTypes: [] as string[],
+    preferredRentMin: undefined as number | undefined,
+    preferredRentMax: undefined as number | undefined,
+    preferredDistance: undefined as number | undefined,
+    address: '',
+  });
+
   // Debug: Log current user info
   useEffect(() => {
     console.log('🔍 Current user info:', {
@@ -70,6 +83,7 @@ const TenantDashboard = () => {
 
   useEffect(() => {
     fetchProfile();
+    fetchTenantPreferences();
   }, [user]);
 
   useEffect(() => {
@@ -229,9 +243,31 @@ const TenantDashboard = () => {
           location: data.address || '',
           profilePhoto: data.image_url || '',
         });
+        // Set notification settings
+        setViewingRequestNotifications(data.viewingRequestNotifications ?? true);
       }
     } catch (err) {
       console.error('Error fetching tenant profile:', err);
+    }
+  };
+
+  const fetchTenantPreferences = async () => {
+    if (!user) return;
+    try {
+      const response = await tenantApi.getPreferences(user.id);
+      if (response.success && response.data) {
+        const data = response.data;
+        setTenantPreferences({
+          preferredHouseTypes: data.preferredHouseTypes || [],
+          preferredRentMin: data.preferredRentMin,
+          preferredRentMax: data.preferredRentMax,
+          preferredDistance: data.preferredDistance,
+          address: data.address || '',
+        });
+        console.log('Tenant preferences loaded:', data);
+      }
+    } catch (err) {
+      console.error('Error fetching tenant preferences:', err);
     }
   };
 
@@ -240,14 +276,49 @@ const TenantDashboard = () => {
                          property.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.city.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesType = selectedType === 'all' || property.type === selectedType;
-
+    // Use tenant preferences for filtering
+    let matchesType = true;
     let matchesPrice = true;
-    if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
-    else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
-    else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
+    let matchesDistance = true;
 
-    return matchesSearch && matchesType && matchesPrice;
+    // House type filtering
+    if (tenantPreferences.preferredHouseTypes.length > 0) {
+      matchesType = tenantPreferences.preferredHouseTypes.includes(property.type);
+    } else {
+      // Fallback to manual filter if no preferences set
+      matchesType = selectedType === 'all' || property.type === selectedType;
+    }
+
+    // Rent range filtering
+    if (tenantPreferences.preferredRentMin !== undefined) {
+      matchesPrice = property.price >= tenantPreferences.preferredRentMin;
+    }
+    if (tenantPreferences.preferredRentMax !== undefined) {
+      matchesPrice = matchesPrice && property.price <= tenantPreferences.preferredRentMax;
+    }
+    
+    // If no preferences set, use manual price filter
+    if (tenantPreferences.preferredRentMin === undefined && tenantPreferences.preferredRentMax === undefined) {
+      if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
+      else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
+      else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
+    }
+
+    // Distance filtering
+    if (tenantPreferences.preferredDistance !== undefined && tenantPreferences.address) {
+      const tenantCoords = parseCoordinates(tenantPreferences.address);
+      if (tenantCoords && property.coordinates && property.coordinates.lat && property.coordinates.lng) {
+        const distance = calculateDistance(
+          tenantCoords.lat,
+          tenantCoords.lon,
+          property.coordinates.lat,
+          property.coordinates.lng
+        );
+        matchesDistance = distance <= tenantPreferences.preferredDistance;
+      }
+    }
+
+    return matchesSearch && matchesType && matchesPrice && matchesDistance;
   });
 
   const handlePropertyClick = (propertyId: string) => {
@@ -318,80 +389,111 @@ const TenantDashboard = () => {
         {/* Upcoming Payment Banner */}
         <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
 
-        {/* Viewing Requests Section */}
-        <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
-            <Eye className="w-5 h-5 mr-2 text-blue-500" />
-            Viewing Requests
-          </h2>
-          {loadingViewings ? (
-            <div className="text-gray-500">Loading...</div>
-          ) : viewings.length === 0 ? (
-            <div className="text-gray-500">No viewing requests yet.</div>
-          ) : (
-            <div className="space-y-4">
-              {/* Approved requests as reminders */}
-              {approvedRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
+                {/* Viewing Requests Section - Only show if notifications are enabled */}
+        {viewingRequestNotifications && (
+          <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+              <Eye className="w-5 h-5 mr-2 text-blue-500" />
+              Viewing Requests
+            </h2>
+            {loadingViewings ? (
+              <div className="text-gray-500">Loading...</div>
+            ) : viewings.length === 0 ? (
+              <div className="text-gray-500">No viewing requests yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Approved requests as reminders */}
+                {approvedRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
                     </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-semibold text-green-700">Approved</span>
-                  </div>
-                </div>
-              ))}
-              {/* Other requests */}
-              {otherRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
-                    </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-semibold text-green-700">Approved</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
-                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
-                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
-                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
-                  </div>
-                  {v.status === 'Proposed' && (
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={async () => {
-                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) });
+                ))}
+                {/* Other requests */}
+                {otherRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                      {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                      {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                      <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                    </div>
+                    {v.status === 'Proposed' && (
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={async () => {
+                          await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) });
+                          fetchViewings();
+                        }}>Approve</Button>
+                        <Button size="sm" variant="destructive" onClick={async () => {
+                          await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Declined' }) });
+                          fetchViewings();
+                        }}>Decline</Button>
+                      </div>
+                    )}
+                    {v.status !== 'Closed' && (
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Closed' }) });
                         fetchViewings();
-                      }}>Approve</Button>
-                      <Button size="sm" variant="destructive" onClick={async () => {
-                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Declined' }) });
-                        fetchViewings();
-                      }}>Decline</Button>
-                    </div>
-                  )}
-                  {v.status !== 'Closed' && (
-                    <Button size="sm" variant="outline" onClick={async () => {
-                      await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Closed' }) });
-                      fetchViewings();
-                    }}>Close Request</Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                      }}>Close Request</Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+          {/* Preferences Indicator */}
+          {(tenantPreferences.preferredHouseTypes.length > 0 || 
+            tenantPreferences.preferredRentMin !== undefined || 
+            tenantPreferences.preferredRentMax !== undefined || 
+            tenantPreferences.preferredDistance !== undefined) && (
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium text-blue-900 text-sm">Using Your Preferences</h3>
+                  <p className="text-xs text-blue-700">
+                    {tenantPreferences.preferredHouseTypes.length > 0 && `Types: ${tenantPreferences.preferredHouseTypes.join(', ')} `}
+                    {(tenantPreferences.preferredRentMin !== undefined || tenantPreferences.preferredRentMax !== undefined) && 
+                      `Rent: $${tenantPreferences.preferredRentMin || 0} - $${tenantPreferences.preferredRentMax || '∞'} `}
+                    {tenantPreferences.preferredDistance !== undefined && `Within ${tenantPreferences.preferredDistance} miles`}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/tenant/profile')}
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50 text-xs"
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  Edit
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col lg:flex-row gap-4 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -406,7 +508,10 @@ const TenantDashboard = () => {
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[120px] hover:border-blue-300 transition-colors"
+                disabled={tenantPreferences.preferredHouseTypes.length > 0}
+                className={`px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[120px] hover:border-blue-300 transition-colors ${
+                  tenantPreferences.preferredHouseTypes.length > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
                 <option value="all">All Types</option>
                 <option value="room">Room</option>
@@ -417,7 +522,10 @@ const TenantDashboard = () => {
               <select
                 value={priceRange}
                 onChange={(e) => setPriceRange(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px] hover:border-blue-300 transition-colors"
+                disabled={tenantPreferences.preferredRentMin !== undefined || tenantPreferences.preferredRentMax !== undefined}
+                className={`px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px] hover:border-blue-300 transition-colors ${
+                  (tenantPreferences.preferredRentMin !== undefined || tenantPreferences.preferredRentMax !== undefined) ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
                 <option value="all">All Prices</option>
                 <option value="under-2000">Under $2,000</option>

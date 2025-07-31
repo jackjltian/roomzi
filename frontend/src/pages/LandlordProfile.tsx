@@ -509,16 +509,6 @@ const LandlordProfile = () => {
               <Badge className="mt-2 bg-green-100 text-green-800">Verified Landlord</Badge>
             </div>
             <div className="flex gap-2">
-              {!editMode && (
-                <Button
-                  onClick={() => setEditMode(true)}
-                  variant="outline"
-                  className="flex items-center"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </Button>
-              )}
               <Button
                 onClick={handleSwitchToTenant}
                 variant="outline"
@@ -718,28 +708,6 @@ const LandlordProfile = () => {
                     </>
                   )}
                 </Button>
-              </div>
-              {/* Existing settings below */}
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Email Notifications</h4>
-                  <p className="text-sm text-gray-600">Receive updates about inquiries and bookings</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Property Visibility</h4>
-                  <p className="text-sm text-gray-600">Control who can see your listings</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div>
-                  <h4 className="font-medium">Account Settings</h4>
-                  <p className="text-sm text-gray-600">Change password and security settings</p>
-                </div>
-                <Button variant="outline" size="sm">Manage</Button>
               </div>
             </div>
           </Card>
