@@ -119,8 +119,17 @@ export const getTenantById = async (req, res) => {
 // Create new tenant (with upsert functionality)
 export const createTenant = async (req, res) => {
   try {
-    const { id, full_name, email, phone, image_url, address, documents } =
-      req.body;
+    const {
+      id,
+      full_name,
+      email,
+      phone,
+      image_url,
+      address,
+      documents,
+      viewingRequestNotifications,
+      rentReminderDays,
+    } = req.body;
     // Use upsert to handle both create and update scenarios
     const tenant = await prisma.tenant_profiles.upsert({
       where: { id },
@@ -130,6 +139,10 @@ export const createTenant = async (req, res) => {
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
+        ...(viewingRequestNotifications !== undefined && {
+          viewingRequestNotifications,
+        }),
+        ...(rentReminderDays !== undefined && { rentReminderDays }),
         ...(documents !== undefined && {
           documents: { set: normalizeDocuments(documents) },
         }),
@@ -142,6 +155,11 @@ export const createTenant = async (req, res) => {
         phone,
         image_url,
         address,
+        viewingRequestNotifications:
+          viewingRequestNotifications !== undefined
+            ? viewingRequestNotifications
+            : true,
+        rentReminderDays: rentReminderDays !== undefined ? rentReminderDays : 3,
         documents: { set: normalizeDocuments(documents || []) },
       },
     });
@@ -164,9 +182,22 @@ export const createTenant = async (req, res) => {
 export const updateTenant = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, email, phone, image_url, address, documents } = req.body;
+    const {
+      full_name,
+      email,
+      phone,
+      image_url,
+      address,
+      documents,
+      viewingRequestNotifications,
+      rentReminderDays,
+      preferredHouseTypes,
+      preferredRentMin,
+      preferredRentMax,
+      preferredDistance,
+    } = req.body;
 
-    console.log("Updating tenant profile:", { id, documents });
+    console.log("Updating tenant profile:", { id, documents, viewingRequestNotifications, rentReminderDays });
 
     // Update tenant profile
     const updateData = {
@@ -177,6 +208,26 @@ export const updateTenant = async (req, res) => {
       ...(address !== undefined && { address }),
       updated_at: new Date(),
     };
+
+    // Handle boolean fields explicitly
+    if (viewingRequestNotifications !== undefined) {
+      updateData.viewingRequestNotifications = Boolean(viewingRequestNotifications);
+    }
+    if (rentReminderDays !== undefined) {
+      updateData.rentReminderDays = rentReminderDays;
+    }
+    if (preferredHouseTypes !== undefined) {
+      updateData.preferredHouseTypes = preferredHouseTypes;
+    }
+    if (preferredRentMin !== undefined) {
+      updateData.preferredRentMin = preferredRentMin;
+    }
+    if (preferredRentMax !== undefined) {
+      updateData.preferredRentMax = preferredRentMax;
+    }
+    if (preferredDistance !== undefined) {
+      updateData.preferredDistance = preferredDistance;
+    }
 
     // Handle documents separately to avoid issues with normalization
     if (documents !== undefined) {
@@ -220,6 +271,7 @@ export const updateTenant = async (req, res) => {
         .status(404)
         .json(errorResponse(new Error("Tenant not found"), 404));
     }
+
     res.status(500).json(errorResponse(error));
   }
 };
@@ -247,14 +299,86 @@ export const deleteTenant = async (req, res) => {
   }
 };
 
+// Get tenant preferences
+export const getTenantPreferences = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const tenant = await prisma.tenant_profiles.findUnique({
+      where: { id },
+      select: {
+        preferredHouseTypes: true,
+        preferredRentMin: true,
+        preferredRentMax: true,
+        preferredDistance: true,
+        address: true,
+      },
+    });
+
+    if (!tenant) {
+      return res
+        .status(404)
+        .json(errorResponse(new Error("Tenant not found"), 404));
+    }
+
+    res.json(
+      successResponse(tenant, "Tenant preferences retrieved successfully")
+    );
+  } catch (error) {
+    console.error("Error fetching tenant preferences:", error);
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Update tenant preferences
+export const updateTenantPreferences = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      preferredHouseTypes,
+      preferredRentMin,
+      preferredRentMax,
+      preferredDistance,
+    } = req.body;
+
+    const tenant = await prisma.tenant_profiles.update({
+      where: { id },
+      data: {
+        ...(preferredHouseTypes !== undefined && { preferredHouseTypes }),
+        ...(preferredRentMin !== undefined && { preferredRentMin }),
+        ...(preferredRentMax !== undefined && { preferredRentMax }),
+        ...(preferredDistance !== undefined && { preferredDistance }),
+        updated_at: new Date(),
+      },
+      select: {
+        preferredHouseTypes: true,
+        preferredRentMin: true,
+        preferredRentMax: true,
+        preferredDistance: true,
+        address: true,
+      },
+    });
+
+    res.json(
+      successResponse(tenant, "Tenant preferences updated successfully")
+    );
+  } catch (error) {
+    console.error("Error updating tenant preferences:", error);
+    if (error.code === "P2025") {
+      return res
+        .status(404)
+        .json(errorResponse(new Error("Tenant not found"), 404));
+    }
+    res.status(500).json(errorResponse(error));
+  }
+};
+
 // Get tenant's listings (properties they're renting)
 export const getTenantListings = async (req, res) => {
   try {
     const { id } = req.params;
 
     console.log("Fetching listings for tenant ID:", id);
-
-
 
     // Fetch listings for the tenant, including landlord_profiles and leases
     const listings = await prisma.listings.findMany({
@@ -293,43 +417,58 @@ export const getTenantListings = async (req, res) => {
     const listingsWithLeaseDates = listings.map((listing) => {
       // Get the most recent lease (already included in the query)
       const lease = listing.leases[0];
-      
+
       // Parse JSON fields if they're strings
       const images = Array.isArray(listing.images)
         ? listing.images
-        : (typeof listing.images === 'string' && listing.images.trim().startsWith('[')
-            ? JSON.parse(listing.images)
-            : []);
-            
+        : typeof listing.images === "string" &&
+          listing.images.trim().startsWith("[")
+        ? JSON.parse(listing.images)
+        : [];
+
       const amenities = Array.isArray(listing.amenities)
         ? listing.amenities
-        : (typeof listing.amenities === 'string' && listing.amenities.trim().startsWith('[')
-            ? JSON.parse(listing.amenities)
-            : []);
-            
+        : typeof listing.amenities === "string" &&
+          listing.amenities.trim().startsWith("[")
+        ? JSON.parse(listing.amenities)
+        : [];
+
       const house_rules = Array.isArray(listing.house_rules)
         ? listing.house_rules
-        : (typeof listing.house_rules === 'string' && listing.house_rules.trim().startsWith('[')
-            ? JSON.parse(listing.house_rules)
-            : (listing.house_rules ? [listing.house_rules] : []));
-      
+        : typeof listing.house_rules === "string" &&
+          listing.house_rules.trim().startsWith("[")
+        ? JSON.parse(listing.house_rules)
+        : listing.house_rules
+        ? [listing.house_rules]
+        : [];
+
       return {
         ...listing,
         id: listing.id.toString(),
         images,
         amenities,
         house_rules,
-        lease_start: lease?.start_date ? lease.start_date.toISOString().split('T')[0] : "N/A",
-        lease_end: lease?.end_date ? lease.end_date.toISOString().split('T')[0] : "N/A",
-        landlord_name: listing.landlord_profiles?.full_name || listing.landlord_name || "N/A",
+        lease_start: lease?.start_date
+          ? lease.start_date.toISOString().split("T")[0]
+          : "N/A",
+        lease_end: lease?.end_date
+          ? lease.end_date.toISOString().split("T")[0]
+          : "N/A",
+        landlord_name:
+          listing.landlord_profiles?.full_name ||
+          listing.landlord_name ||
+          "N/A",
         landlord_email: listing.landlord_profiles?.email || "N/A",
-        landlord_phone: listing.landlord_profiles?.phone || listing.landlord_phone || "N/A",
+        landlord_phone:
+          listing.landlord_profiles?.phone || listing.landlord_phone || "N/A",
       };
     });
 
-
     res.json(
-      successResponse(listingsWithLeaseDates, "Tenant listings retrieved successfully")
+      successResponse(
+        listingsWithLeaseDates,
+        "Tenant listings retrieved successfully"
+      )
     );
   } catch (error) {
     console.error("Error fetching tenant listings:", error);

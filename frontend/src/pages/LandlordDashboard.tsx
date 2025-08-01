@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Home, User, Settings, MapPin, Calendar, MessageCircle, Plus, LogOut, Wrench, Eye, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { sampleProperties, Property } from '@/data/sampleProperties';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
+  const location = useLocation();
   const { signOut, user } = useAuth();
   const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
@@ -27,9 +28,15 @@ const LandlordDashboard = () => {
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
 
-  // Get user's name from metadata or email
-  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
   const userId = user?.id || '';
+  const [profile, setProfile] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    location: '',
+    profilePhoto: '',
+    viewingRequestNotifications: true, // Add default setting
+  });
 
   // Helper to format date safely
   const formatDateSafe = (dateString) => {
@@ -52,6 +59,60 @@ const LandlordDashboard = () => {
 
   const totalIncome = properties.reduce((sum, property) => property.landlord_id === userId ? sum + property.price : sum, 0);
   const occupiedProperties = properties.filter(p => p.landlord_id === userId && !p.available).length;
+
+  // Fetch landlord profile
+  const fetchProfile = async () => {
+    if (!user) return;
+    try {
+      console.log('Fetching landlord profile for user ID:', user.id);
+      const response = await apiFetch(`${getApiBaseUrl()}/api/landlords/${user.id}`);
+      console.log('Landlord profile response:', response);
+      if (response.success && response.data) {
+        const data = response.data;
+        console.log('Landlord profile data:', data);
+        setProfile({
+          fullName: data.full_name || '',
+          email: data.email || '',
+          phone: data.phone || '',
+          location: data.address || '',
+          profilePhoto: data.image_url || '',
+          viewingRequestNotifications: data.viewingRequestNotifications ?? true, // Get setting from API
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching landlord profile:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfile();
+  }, [user]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchProfile();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  useEffect(() => {
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setProfile(e.detail);
+      }
+    };
+    window.addEventListener('landlordProfileUpdated', handleProfileUpdated);
+    return () => window.removeEventListener('landlordProfileUpdated', handleProfileUpdated);
+  }, []);
+
+  useEffect(() => {
+    if (location.state && location.state.profileUpdated) {
+      fetchProfile();
+      // Clear the state so it doesn't refetch on every render
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     async function fetchProperties() {
@@ -160,15 +221,6 @@ const LandlordDashboard = () => {
               <Badge className="ml-3 bg-green-100 text-green-800">Landlord</Badge>
             </div>
             <div className="flex items-center space-x-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => navigate('/landlord/profile')}
-                className="hover:bg-green-50"
-              >
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -187,7 +239,7 @@ const LandlordDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {userName}!</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {profile.fullName || 'Landlord'}!</h2>
             <p className="text-gray-600">Manage your properties and connect with tenants</p>
           </div>
         </div>
@@ -205,70 +257,72 @@ const LandlordDashboard = () => {
           </div>
         )}
 
-        {/* Viewing Requests Section */}
-        <Card className="p-6 mb-8 shadow-lg bg-white/80 backdrop-blur-sm border-0">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
-            <Eye className="w-5 h-5 mr-2 text-blue-500" />
-            Viewing Requests
-          </h2>
-          {loadingViewings ? (
-            <div className="text-gray-500">Loading...</div>
-          ) : viewingRequests.length === 0 ? (
-            <div className="text-gray-500">No viewing requests yet.</div>
-          ) : (
-            <div className="space-y-4">
-              {/* Approved requests as reminders */}
-              {approvedRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
+        {/* Viewing Requests Section - Only show if notifications are enabled */}
+        {profile.viewingRequestNotifications && (
+          <Card className="p-6 mb-8 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+              <Eye className="w-5 h-5 mr-2 text-blue-500" />
+              Viewing Requests
+            </h2>
+            {loadingViewings ? (
+              <div className="text-gray-500">Loading...</div>
+            ) : viewingRequests.length === 0 ? (
+              <div className="text-gray-500">No viewing requests yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Approved requests as reminders */}
+                {approvedRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
                     </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-semibold text-green-700">Approved</span>
-                  </div>
-                </div>
-              ))}
-              {/* Other requests (not closed) */}
-              {otherRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
-                    </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-semibold text-green-700">Approved</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
-                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
-                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
-                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                ))}
+                {/* Other requests (not closed) */}
+                {otherRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                      {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                      {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                      <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {v.status === 'Pending' && (
+                        <>
+                          <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
+                          <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
+                        </>
+                      )}
+                      {v.status !== 'Closed' && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => handleStatusUpdate(v.id, 'Closed', undefined)}>Close Request</Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    {v.status === 'Pending' && (
-                      <>
-                        <Button type="button" size="sm" variant="default" onClick={() => handleStatusUpdate(v.id, 'Approved', undefined)}>Approve</Button>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => openProposeModal(v.id)}>Decline/Propose New Time</Button>
-                      </>
-                    )}
-                    {v.status !== 'Closed' && (
-                      <Button type="button" size="sm" variant="outline" onClick={() => handleStatusUpdate(v.id, 'Closed', undefined)}>Close Request</Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Propose New Time Modal */}
         <Dialog open={showProposeModal} onOpenChange={setShowProposeModal}>
@@ -430,15 +484,6 @@ const LandlordDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2"
-            onClick={handleCreateListing}
-          >
-            <Plus className="w-5 h-5 mb-1" />
-            <span className="text-xs">Add Listing</span>
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
             className="flex-col h-auto py-2 relative"
             onClick={() => navigate('/landlord/maintenance-requests')}
           >
@@ -457,7 +502,7 @@ const LandlordDashboard = () => {
             onClick={() => navigate('/landlord/profile')}
           >
             <Settings className="w-5 h-5 mb-1" />
-            <span className="text-xs">Profile</span>
+            <span className="text-xs font-medium">Profile</span>
           </Button>
         </div>
       </nav>
