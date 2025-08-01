@@ -14,6 +14,7 @@ const LandlordDashboard = () => {
   const { signOut, user } = useAuth();
   const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
+  const [deleteListing, setDeleteListing] = useState(null);
 
   // Get user's name from metadata or email
   const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Landlord';
@@ -27,11 +28,45 @@ const LandlordDashboard = () => {
     navigate(`/manage-listing/${listingId}`);
   }
 
+  const handleEditListing = (listing) => {
+    navigate(`/edit-listing/${listing.id}`, { 
+      state: { listing: listing } 
+    });
+  }
+
+  const handleDeleteListing = async (listing) => {
+    console.log("Deleting listing with ID", listing.id);
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/listings/${listing.id}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(listing)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to delete listing.');
+        }
+
+        const result = await response.json();
+        console.log('Listing deleted successfully:', result);
+    } catch (error) {
+      console.error('Error deleting listing:', error);
+      alert(error.message || 'Failed to delete listing.');
+    }
+
+    setDeleteListing(null);
+  }
+
   const handleViewPayments = () => {
     navigate('/payments');
   }
 
-  const totalIncome = properties.reduce((sum, property) => property.landlord_id === userId ? sum + property.price : sum, 0);
+  const totalIncome = properties.reduce((sum, property) => property.landlord_id === userId && !property.available ? sum + property.price : sum, 0);
   const occupiedProperties = properties.filter(p => p.landlord_id === userId && !p.available).length;
 
   useEffect(() => {
@@ -51,7 +86,6 @@ const LandlordDashboard = () => {
       console.log('API response:', data);
       
       if (response.ok) {
-        // The backend returns data wrapped in successResponse format
         const listings = data.data || data;
         console.log('Filtered listings:', listings);
         setProperties(listings);
@@ -61,7 +95,7 @@ const LandlordDashboard = () => {
     }
 
     fetchProperties();
-  }, [userId]);
+  }, [userId, deleteListing]);
 
   useEffect(() => {
     async function fetchPendingMaintenance() {
@@ -230,10 +264,10 @@ const LandlordDashboard = () => {
                   <Button size="sm" variant="outline" className="flex-1" onClick={() => handleManageListing(property.id)}>
                     Manage
                   </Button>
-                  <Button size="sm" variant="outline" className="flex-1">
+                  <Button size="sm" variant="outline" className="flex-1" onClick={() => handleEditListing(property)}>
                     Edit
                   </Button>
-                  <Button size="sm" variant="destructive">
+                  <Button size="sm" variant="destructive" onClick={() => setDeleteListing(property)}>
                     Delete
                   </Button>
                 </div>
@@ -255,6 +289,28 @@ const LandlordDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Listing Confirmation */}
+      {deleteListing && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="fixed w-full max-w-md bg-white flex justify-self-center items-center justify-center shadow-2xl">
+            <div className="grid sm-grid-rows-2 w-full h-full p-6 justify-center content-center">
+              <div className="text-center mb-8">
+                <h3 className="font-semibold text-lg text-gray-900">
+                  Are you sure you want to delete listing "{deleteListing.title}"?
+                </h3>
+                <p className="text-sm text-gray-600 mt-2">
+                  Deleted listings cannot be recovered.
+                </p>
+              </div>
+              <div className="flex justify-between content-center space-x-2">
+                <Button className="bg-green-500 hover:bg-green-700 w-full" onClick={() => handleDeleteListing(deleteListing)}>Yes - Delete Listing</Button>
+                <Button className="bg-red-500 hover:bg-red-700 w-full" onClick={() => setDeleteListing(null)}>No - Cancel</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Fixed Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 shadow-lg">

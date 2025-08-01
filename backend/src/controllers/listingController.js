@@ -324,19 +324,47 @@ export const createListing = async (req, res) => {
 export const updateListing = async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
-
-    // Process numeric fields
-    if (updateData.bedrooms)
-      updateData.bedrooms = parseInt(updateData.bedrooms);
-    if (updateData.bathrooms)
-      updateData.bathrooms = parseInt(updateData.bathrooms);
-    if (updateData.area) updateData.area = parseFloat(updateData.area);
-    if (updateData.price) updateData.price = parseFloat(updateData.price);
+    const {
+      title,
+        type,
+        address,
+        city,
+        state,
+        zipCode,
+        bedrooms,
+        bathrooms,
+        area,
+        price,
+        description,
+        leaseType,
+        amenities,
+        requirements,
+        houseRules,
+        images,
+        landlordId,
+    } = req.body;
 
     const listing = await prisma.listings.update({
       where: { id: id },
-      data: updateData,
+      data: {
+        title,
+        type,
+        address,
+        city,
+        state,
+        zip_code: zipCode,
+        bedrooms: parseInt(bedrooms),
+        bathrooms: parseInt(bathrooms),
+        area: parseFloat(area),
+        price: parseFloat(price),
+        description,
+        lease_type: leaseType,
+        amenities,
+        requirements,
+        house_rules: houseRules,
+        images: { set: images },
+        landlord_id: landlordId,
+      },
       include: {
         landlord_profiles: {
           select: {
