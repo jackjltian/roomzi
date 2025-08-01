@@ -340,7 +340,20 @@ const TenantDashboard = () => {
     }
   };
 
+  // Debug: Log current filter states
+  console.log('🔍 Current filter states:', {
+    totalProperties: properties.length,
+    searchTerm,
+    selectedType,
+    priceRange,
+    tenantPreferences,
+    geocodingComplete,
+    tenantCoordinates
+  });
+
   const filteredProperties = properties.filter(property => {
+    console.log(`🔍 Filtering property: ${property.title} (${property.type}) - $${property.price}`);
+    
     const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.city.toLowerCase().includes(searchTerm.toLowerCase());
@@ -353,31 +366,37 @@ const TenantDashboard = () => {
     // House type filtering
     if (tenantPreferences.preferredHouseTypes.length > 0) {
       matchesType = tenantPreferences.preferredHouseTypes.includes(property.type);
+      console.log(`🏠 House type filter: ${property.type} in [${tenantPreferences.preferredHouseTypes.join(', ')}] = ${matchesType}`);
     } else {
       // Fallback to manual filter if no preferences set
       matchesType = selectedType === 'all' || property.type === selectedType;
+      console.log(`🏠 Manual type filter: ${property.type} matches '${selectedType}' = ${matchesType}`);
     }
 
     // Rent range filtering
-    if (tenantPreferences.preferredRentMin !== undefined) {
+    if (tenantPreferences.preferredRentMin !== undefined && tenantPreferences.preferredRentMin !== null) {
       matchesPrice = property.price >= tenantPreferences.preferredRentMin;
+      console.log(`💰 Min price filter: $${property.price} >= $${tenantPreferences.preferredRentMin} = ${matchesPrice}`);
     }
-    if (tenantPreferences.preferredRentMax !== undefined) {
+    if (tenantPreferences.preferredRentMax !== undefined && tenantPreferences.preferredRentMax !== null) {
       matchesPrice = matchesPrice && property.price <= tenantPreferences.preferredRentMax;
+      console.log(`💰 Max price filter: $${property.price} <= $${tenantPreferences.preferredRentMax} = ${matchesPrice}`);
     }
     
     // If no preferences set, use manual price filter
-    if (tenantPreferences.preferredRentMin === undefined && tenantPreferences.preferredRentMax === undefined) {
+    if ((tenantPreferences.preferredRentMin === undefined || tenantPreferences.preferredRentMin === null) && 
+        (tenantPreferences.preferredRentMax === undefined || tenantPreferences.preferredRentMax === null)) {
       if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
       else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
       else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
+      console.log(`💰 Manual price filter: $${property.price} in range '${priceRange}' = ${matchesPrice}`);
     }
 
     // Distance filtering
-    if (tenantPreferences.preferredDistance !== undefined && geocodingComplete) {
-      console.log(`Distance filtering enabled: ${tenantPreferences.preferredDistance} miles from ${tenantPreferences.address}`);
-      console.log(`Tenant coordinates:`, tenantCoordinates);
-      console.log(`Property coordinates:`, property.coordinates);
+    if (tenantPreferences.preferredDistance !== undefined && tenantPreferences.preferredDistance !== null && geocodingComplete) {
+      console.log(`🌍 Distance filtering enabled: ${tenantPreferences.preferredDistance} miles from ${tenantPreferences.address}`);
+      console.log(`📍 Tenant coordinates:`, tenantCoordinates);
+      console.log(`📍 Property coordinates:`, property.coordinates);
       
       if (tenantCoordinates && property.coordinates && property.coordinates.lat && property.coordinates.lng) {
         const distance = calculateDistance(
@@ -386,22 +405,28 @@ const TenantDashboard = () => {
           property.coordinates.lat,
           property.coordinates.lng
         );
-        console.log(`Distance from ${tenantPreferences.address} to ${property.address}: ${distance} miles (max: ${tenantPreferences.preferredDistance})`);
+        console.log(`📏 Distance from ${tenantPreferences.address} to ${property.address}: ${distance} miles (max: ${tenantPreferences.preferredDistance})`);
         matchesDistance = distance <= tenantPreferences.preferredDistance;
-        console.log(`Property ${property.address} distance match:`, matchesDistance);
+        console.log(`🌍 Property ${property.address} distance match:`, matchesDistance);
       } else {
         // If property doesn't have valid coordinates, filter it out when distance filtering is enabled
-        console.log(`Property ${property.address} has no valid coordinates, filtering it out due to distance preference`);
+        console.log(`❌ Property ${property.address} has no valid coordinates, filtering it out due to distance preference`);
         matchesDistance = false;
       }
-    } else if (tenantPreferences.preferredDistance !== undefined && !geocodingComplete) {
-      console.log('Geocoding in progress, allowing all properties through temporarily');
+    } else if (tenantPreferences.preferredDistance !== undefined && tenantPreferences.preferredDistance !== null && !geocodingComplete) {
+      console.log('⏳ Geocoding in progress, allowing all properties through temporarily');
       matchesDistance = true;
     } else {
-      console.log('Distance filtering not enabled');
+      console.log('🌍 Distance filtering not enabled');
     }
 
-    return matchesSearch && matchesType && matchesPrice && matchesDistance;
+    const finalResult = matchesSearch && matchesType && matchesPrice && matchesDistance;
+    console.log(`✅ Property ${property.title} final result: ${finalResult} (search: ${matchesSearch}, type: ${matchesType}, price: ${matchesPrice}, distance: ${matchesDistance})`);
+    
+    // TEMPORARY: Show all properties for debugging
+    // return true;
+    
+    return finalResult;
   });
 
   const handlePropertyClick = (propertyId: string) => {

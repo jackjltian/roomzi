@@ -162,6 +162,51 @@ const TenantProfile = () => {
     );
   };
 
+  // Add function to clear all house preferences
+  const handleClearHousePreferences = async () => {
+    if (!user?.id) return;
+    
+    setSavingSettings(true);
+    try {
+      // Clear local state
+      setPreferredHouseTypes([]);
+      setPreferredRentMin(undefined);
+      setPreferredRentMax(undefined);
+      setPreferredDistance(undefined);
+      
+      // Save cleared preferences to database
+      const updateResult = await tenantApi.update(user.id, {
+        preferredHouseTypes: [],
+        preferredRentMin: null,
+        preferredRentMax: null,
+        preferredDistance: null,
+      });
+
+      if (updateResult.success) {
+        toast({
+          title: "Preferences Cleared",
+          description: "All house preferences have been reset and saved.",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Save Failed",
+          description: "Preferences were cleared but failed to save. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing preferences:', error);
+      toast({
+        title: "Error",
+        description: "Failed to clear preferences. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   // Update useEffect to fetch settings from API
   useEffect(() => {
     const fetchProfile = async () => {
@@ -733,7 +778,17 @@ const TenantProfile = () => {
 
               {/* House Preferences */}
               <div>
-                <h4 className="text-lg font-medium mb-4">House Preferences</h4>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-medium">House Preferences</h4>
+                  <Button
+                    onClick={handleClearHousePreferences}
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    Clear All Preferences
+                  </Button>
+                </div>
                 <div className="space-y-6">
                   {/* House Type Preferences */}
                   <div>

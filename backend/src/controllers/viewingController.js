@@ -112,32 +112,62 @@ const getViewingRequestsForTenant = async (req, res) => {
     }
 
     const startTime = Date.now();
-    const requests = await prisma.viewingRequest.findMany({
-      where: { tenantId },
-      include: { 
-        listings: {
-          select: {
-            id: true,
-            title: true,
-            address: true,
-            city: true,
-            state: true,
-            price: true,
-            type: true,
-            images: true,
-          }
-        }, 
-        landlord_profiles: {
-          select: {
-            id: true,
-            full_name: true,
-            email: true,
-            phone: true,
-          }
-        } 
-      },
-      orderBy: { createdAt: "desc" },
-    });
+
+    // Test if the table exists first
+    try {
+      const tableExists = await prisma.$queryRaw`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'viewingRequest'
+        );
+      `;
+      console.log("📋 Table exists check:", tableExists);
+    } catch (tableError) {
+      console.error("❌ Error checking if table exists:", tableError);
+    }
+
+    // First try with includes, if that fails, try without includes
+    let requests;
+    try {
+      requests = await prisma.viewingRequest.findMany({
+        where: { tenantId },
+        include: {
+          listings: {
+            select: {
+              id: true,
+              title: true,
+              address: true,
+              city: true,
+              state: true,
+              price: true,
+              type: true,
+              images: true,
+            },
+          },
+          landlord_profiles: {
+            select: {
+              id: true,
+              full_name: true,
+              email: true,
+              phone: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    } catch (includeError) {
+      console.log(
+        "⚠️ Include query failed, trying without includes:",
+        includeError.message
+      );
+      // Fallback to basic query without includes
+      requests = await prisma.viewingRequest.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
     const endTime = Date.now();
 
     console.log(
@@ -148,6 +178,12 @@ const getViewingRequestsForTenant = async (req, res) => {
     res.json(convertBigIntToString(requests));
   } catch (error) {
     console.error("❌ Error fetching viewing requests for tenant:", error);
+    console.error("❌ Error details:", {
+      message: error.message,
+      code: error.code,
+      meta: error.meta,
+      stack: error.stack,
+    });
     res.status(500).json({ error: "Failed to fetch viewing requests." });
   }
 };
