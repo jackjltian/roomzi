@@ -98,8 +98,8 @@ const FinancialAccount = () => {
           month: 'long' 
         });
         
-        // Check if there's a payment for this month
-        const paymentForMonth = paymentRequests.find(payment => {
+        // Check if there are payments for this month
+        const paymentsForMonth = paymentRequests.filter(payment => {
           if (payment.status !== 'Approved') return false;
           // Use the month field if available, otherwise fall back to payment date
           if (payment.month) {
@@ -112,21 +112,50 @@ const FinancialAccount = () => {
           }
         });
 
+        // Calculate total amount paid for this month
+        const totalPaidAmount = paymentsForMonth.reduce((sum, payment) => {
+          return sum + parseFloat(payment.amount);
+        }, 0);
+
+        // Get the latest payment date for display
+        const latestPayment = paymentsForMonth.length > 0 ? 
+          paymentsForMonth.reduce((latest, payment) => {
+            return new Date(payment.date) > new Date(latest.date) ? payment : latest;
+          }) : null;
+
         // Determine status
         let status = 'Upcoming';
         if (currentMonth < currentDate) {
-          status = paymentForMonth ? 'Paid' : 'Missed';
+          if (paymentsForMonth.length > 0) {
+            // Check if it's a partial payment
+            if (totalPaidAmount < monthlyRent) {
+              status = 'Partial';
+            } else {
+              status = 'Paid';
+            }
+          } else {
+            status = 'Missed';
+          }
         } else if (currentMonth.getFullYear() === currentDate.getFullYear() && 
                    currentMonth.getMonth() === currentDate.getMonth()) {
-          status = paymentForMonth ? 'Paid' : 'Due';
+          if (paymentsForMonth.length > 0) {
+            // Check if it's a partial payment
+            if (totalPaidAmount < monthlyRent) {
+              status = 'Partial';
+            } else {
+              status = 'Paid';
+            }
+          } else {
+            status = 'Due';
+          }
         }
 
         allMonths.push({
           month: monthName,
           monthKey,
-          amount: monthlyRent,
+          amount: totalPaidAmount,
           status,
-          paymentDate: paymentForMonth ? new Date(paymentForMonth.date).toLocaleDateString() : null,
+          paymentDate: latestPayment ? new Date(latestPayment.date).toLocaleDateString() : null,
           leaseId: lease.id,
           propertyAddress: lease.listing?.address || 'Unknown Property'
         });
@@ -169,7 +198,27 @@ const FinancialAccount = () => {
     });
 
     if (nextUnpaidMonth) {
-      nextDueAmount = nextUnpaidMonth.amount;
+      // For upcoming payments, we need to get the actual rent amount from the lease
+      // since the rental record now shows 0 for unpaid months
+      const leaseForNextMonth = leases.find(lease => {
+        if (!lease.start_date || !lease.end_date) return false;
+        const [startYear, startMonth, startDay] = lease.start_date.split('-').map(Number);
+        const [endYear, endMonth, endDay] = lease.end_date.split('-').map(Number);
+        const startDate = new Date(startYear, startMonth - 1, startDay);
+        const endDate = new Date(endYear, endMonth - 1, endDay);
+        const monthDate = new Date(nextUnpaidMonth.monthKey + '-01');
+        return monthDate >= startDate && monthDate <= endDate;
+      });
+      
+      const fullRentAmount = leaseForNextMonth ? leaseForNextMonth.rent : 0;
+      
+      // If it's a partial payment, calculate the remaining amount
+      if (nextUnpaidMonth.status === 'Partial') {
+        nextDueAmount = fullRentAmount - nextUnpaidMonth.amount;
+      } else {
+        nextDueAmount = fullRentAmount;
+      }
+      
       // Calculate the due date (typically 1st of the month)
       const [year, month] = nextUnpaidMonth.monthKey.split('-').map(Number);
       const dueDate = new Date(year, month - 1, 1);
@@ -203,12 +252,31 @@ const FinancialAccount = () => {
   // Auto-fill amount when month is selected
   useEffect(() => {
     if (selectedMonth) {
-      const selectedMonthData = unpaidMonths.find(month => month.monthKey === selectedMonth);
-      if (selectedMonthData) {
-        setAmount(selectedMonthData.amount.toString());
+      // Find the lease that covers this month to get the actual rent amount
+      const leaseForSelectedMonth = leases.find(lease => {
+        if (!lease.start_date || !lease.end_date) return false;
+        const [startYear, startMonth, startDay] = lease.start_date.split('-').map(Number);
+        const [endYear, endMonth, endDay] = lease.end_date.split('-').map(Number);
+        const startDate = new Date(startYear, startMonth - 1, startDay);
+        const endDate = new Date(endYear, endMonth - 1, endDay);
+        const monthDate = new Date(selectedMonth + '-01');
+        return monthDate >= startDate && monthDate <= endDate;
+      });
+      
+      const fullRentAmount = leaseForSelectedMonth ? leaseForSelectedMonth.rent : 0;
+      
+      // Check if this month already has a partial payment
+      const existingMonthData = rentHistory.find(month => month.monthKey === selectedMonth);
+      if (existingMonthData && existingMonthData.status === 'Partial') {
+        // Show remaining amount for partial payments
+        const remainingAmount = fullRentAmount - existingMonthData.amount;
+        setAmount(remainingAmount.toString());
+      } else {
+        // Show full rent amount for unpaid months
+        setAmount(fullRentAmount.toString());
       }
     }
-  }, [selectedMonth, unpaidMonths]);
+  }, [selectedMonth, leases, rentHistory]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -731,6 +799,7 @@ const FinancialAccount = () => {
                       <td className="py-2 pr-4">
                         <Badge className={
                           rent.status === 'Paid' ? 'bg-green-100 text-green-800' :
+                          rent.status === 'Partial' ? 'bg-orange-100 text-orange-800' :
                           rent.status === 'Due' ? 'bg-yellow-100 text-yellow-800' :
                           rent.status === 'Missed' ? 'bg-red-100 text-red-800' :
                           rent.status === 'Upcoming' ? 'bg-blue-100 text-blue-800' :
