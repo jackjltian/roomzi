@@ -36,11 +36,6 @@ const FinancialAccount = () => {
     const approvedPayments = paymentRequests.filter(payment => payment.status === 'Approved');
     const total = approvedPayments.reduce((sum, payment) => sum + payment.amount, 0);
     
-    // Debug logging
-    console.log('Payment Requests:', paymentRequests);
-    console.log('Approved Payments:', approvedPayments);
-    console.log('Total Paid:', total);
-    
     return total;
   }, [paymentRequests]);
 
@@ -59,12 +54,6 @@ const FinancialAccount = () => {
       
       return total + (lease.rent * months);
     }, 0);
-    
-    // Debug logging
-    console.log('Total Rent Calculation:', {
-      leases: leases,
-      totalRent: total
-    });
     
     return total;
   }, [leases]);
@@ -168,13 +157,6 @@ const FinancialAccount = () => {
     // Sort by date (oldest first)
     const sortedMonths = allMonths.sort((a, b) => new Date(a.monthKey + '-01').getTime() - new Date(b.monthKey + '-01').getTime());
     
-    // Debug logging
-    console.log('Rent History Calculation:', {
-      leases: leases,
-      paymentRequests: paymentRequests,
-      rentHistory: sortedMonths
-    });
-    
     return sortedMonths;
   }, [leases, paymentRequests]);
 
@@ -229,13 +211,6 @@ const FinancialAccount = () => {
       });
     }
 
-    console.log('Next Rent Due Calculation:', {
-      currentDate: currentDate.toISOString(),
-      nextUnpaidMonth: nextUnpaidMonth ? nextUnpaidMonth.monthKey : 'None',
-      nextDueAmount: nextDueAmount,
-      nextDueDate: nextDueDate,
-    });
-
     return {
       amount: nextDueAmount,
       dueDate: nextDueDate,
@@ -248,35 +223,6 @@ const FinancialAccount = () => {
   const unpaidMonths = useMemo(() => {
     return rentHistory.filter(month => month.status !== 'Paid');
   }, [rentHistory]);
-
-  // Auto-fill amount when month is selected
-  useEffect(() => {
-    if (selectedMonth) {
-      // Find the lease that covers this month to get the actual rent amount
-      const leaseForSelectedMonth = leases.find(lease => {
-        if (!lease.start_date || !lease.end_date) return false;
-        const [startYear, startMonth, startDay] = lease.start_date.split('-').map(Number);
-        const [endYear, endMonth, endDay] = lease.end_date.split('-').map(Number);
-        const startDate = new Date(startYear, startMonth - 1, startDay);
-        const endDate = new Date(endYear, endMonth - 1, endDay);
-        const monthDate = new Date(selectedMonth + '-01');
-        return monthDate >= startDate && monthDate <= endDate;
-      });
-      
-      const fullRentAmount = leaseForSelectedMonth ? leaseForSelectedMonth.rent : 0;
-      
-      // Check if this month already has a partial payment
-      const existingMonthData = rentHistory.find(month => month.monthKey === selectedMonth);
-      if (existingMonthData && existingMonthData.status === 'Partial') {
-        // Show remaining amount for partial payments
-        const remainingAmount = fullRentAmount - existingMonthData.amount;
-        setAmount(remainingAmount.toString());
-      } else {
-        // Show full rent amount for unpaid months
-        setAmount(fullRentAmount.toString());
-      }
-    }
-  }, [selectedMonth, leases, rentHistory]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -321,34 +267,6 @@ const FinancialAccount = () => {
       .then(data => {
         if (data.success) {
           setLeases(data.data || []);
-          // Debug logging for lease dates
-          console.log('Lease Data Received:', data.data);
-          if (data.data && data.data.length > 0) {
-            data.data.forEach((lease, index) => {
-              // Parse dates explicitly to avoid timezone issues
-              const [startYear, startMonth, startDay] = lease.start_date ? lease.start_date.split('-').map(Number) : [null, null, null];
-              const [endYear, endMonth, endDay] = lease.end_date ? lease.end_date.split('-').map(Number) : [null, null, null];
-              const startDateObj = lease.start_date ? new Date(startYear, startMonth - 1, startDay) : null;
-              const endDateObj = lease.end_date ? new Date(endYear, endMonth - 1, endDay) : null;
-              
-              console.log(`Lease ${index + 1}:`, {
-                start_date: lease.start_date,
-                end_date: lease.end_date,
-                startDateObj: startDateObj,
-                endDateObj: endDateObj,
-                formattedStart: startDateObj ? startDateObj.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }) : 'Not set',
-                formattedEnd: endDateObj ? endDateObj.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }) : 'Not set'
-              });
-            });
-          }
         }
       })
       .catch(err => console.error('Error fetching lease data:', err))

@@ -282,12 +282,6 @@ export const getTenantListings = async (req, res) => {
 
     console.log("Found listings:", listings.length, "for tenant:", id);
 
-    // Convert BigInt to string for JSON serialization
-    const responseData = listings.map((listing) => ({
-      ...listing,
-      id: listing.id.toString(),
-    }));
-
     // Process listings with lease data and landlord contact info
     const listingsWithLeaseDates = listings.map((listing) => {
       // Get the most recent lease (already included in the query)
