@@ -177,6 +177,8 @@ export const getLeasesForTenant = async (req, res) => {
   }
 };
 
+
+
 // Get a specific lease by ID
 export const getLeaseById = async (req, res) => {
   try {

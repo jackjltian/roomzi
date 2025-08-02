@@ -163,13 +163,7 @@ const TenantMyHouse = () => {
     fetchHistory();
   }, [showHistory, tenantId, currentRental]);
 
-  const handlePaymentsClick = () => {
-    if (currentRental && currentRental.id) {
-      navigate(`/tenant/payments/${currentRental.id}`);
-    } else {
-      navigate('/tenant/payments');
-    }
-  };
+
 
   const handleSendMessage = () => {
     if (currentRental) {
@@ -404,10 +398,6 @@ const TenantMyHouse = () => {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
               <div className="grid md:grid-cols-2 gap-4">
-                <Button variant="outline" className="justify-start" onClick={handlePaymentsClick}>
-                  <DollarSign className="w-4 h-4 mr-2" />
-                  Payments
-                </Button>
                 <Button variant="outline" className="justify-start" onClick={() => navigate(`/tenant/maintenance/${currentRental.id}`)}>
                   <Home className="w-4 h-4 mr-2" />
                   Maintenance Request
