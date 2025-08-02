@@ -11,7 +11,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
 import { getApiBaseUrl, getLeasesForTenant, getNotificationSummary, tenantApi } from '@/utils/api';
-import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
 import { calculateDistance, parseCoordinates, geocodeAddress } from '@/lib/utils';
 
 // Helper to safely parse JSON fields
@@ -533,10 +532,7 @@ const TenantDashboard = () => {
           </div>
         </div>
 
-        {/* Upcoming Payment Banner */}
-        <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
-
-                {/* Viewing Requests Section - Only show if notifications are enabled */}
+        {/* Viewing Requests Section - Only show if notifications are enabled */}
         {viewingRequestNotifications && (
           <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">

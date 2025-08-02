@@ -4,11 +4,13 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, MessageCircle, Home, Calendar, User, X } from 'lucide-react';
+import { ArrowLeft, MessageCircle, Home, Calendar, User, X, Trash2 } from 'lucide-react';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { useAuth } from '@/context/AuthContext';
+import { useSocket } from '@/context/SocketContext';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
 import { useToast } from '@/hooks/use-toast';
+import { chatApi } from '@/api/chat';
 
 interface Match {
   id: string;
@@ -35,6 +37,7 @@ const TenantMatches = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { socket, markChatAsRead } = useSocket();
   const { toast } = useToast();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,17 +157,76 @@ const TenantMatches = () => {
     fetchMatches();
   }, [user?.id]);
 
-  // Refresh data when component mounts or when user returns to this page
+  // Listen for new messages to update matches list in real-time
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && user?.id) {
-        fetchMatches();
-      }
+    console.log('🔌 TenantMatches socket effect - socket:', socket, 'isConnected:', socket?.connected);
+    if (!socket || !socket.connected) return;
+
+    const handleNewMessage = (message: any) => {
+      console.log('🔔 TenantMatches received new-message:', message);
+      setMatches(prevMatches => {
+        return prevMatches.map(match => {
+          if (match.id === message.chat_id) {
+            console.log('🔔 Updating match:', match.id, 'with message:', message.content);
+            // Parse message content to determine type and display appropriate preview
+            let messageContent = message.content;
+            try {
+              const parsed = JSON.parse(message.content);
+              if (parsed && typeof parsed === 'object') {
+                if (parsed.url && parsed.name) {
+                  // This is a file or image message
+                  if (parsed.type && parsed.type.startsWith('image/')) {
+                    messageContent = "📷 Image";
+                  } else {
+                    messageContent = "📎 File";
+                  }
+                }
+              }
+            } catch (e) {
+              // If parsing fails, it's a regular text message
+              messageContent = message.content;
+            }
+
+            return {
+              ...match,
+              message: messageContent,
+              time: new Date(message.created_at).toLocaleDateString(),
+              timestamp: new Date(message.created_at).getTime(),
+              unread: message.sender_type === 'landlord' ? true : match.unread
+            };
+          }
+          return match;
+        }).sort((a, b) => b.timestamp - a.timestamp); // Re-sort by timestamp
+      });
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [user?.id]);
+    socket.on('new-message', handleNewMessage);
+
+    return () => {
+      socket.off('new-message', handleNewMessage);
+    };
+  }, [socket, socket?.connected]);
+
+  // Join/leave chat rooms when matches change
+  useEffect(() => {
+    if (!socket || !socket.connected || !matches.length) return;
+
+    // Join all chat rooms for real-time updates
+    matches.forEach(match => {
+      console.log('🔌 Joining chat room:', match.id);
+      socket.emit('join-chat', match.id);
+    });
+
+    return () => {
+      // Leave all chat rooms when component unmounts or matches change
+      matches.forEach(match => {
+        console.log('🔌 Leaving chat room:', match.id);
+        socket.emit('leave-chat', match.id);
+      });
+    };
+  }, [socket, socket?.connected, matches]);
+
+
 
   // Refresh when returning from lease signing
   useEffect(() => {
@@ -229,14 +291,12 @@ const TenantMatches = () => {
 
   const handleReply = async (match: Match) => {
     
-    // Mark this chat as read in the database
+    // Mark this chat as read using WebSocket
     try {
-      await apiFetch(`${getApiBaseUrl()}/api/chats/${match.id}/read`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          userId: user?.id,
-          userType: 'tenant'
-        })
+      markChatAsRead({
+        chatId: match.id,
+        userId: user?.id || '',
+        userType: 'tenant'
       });
       
       // Update local state to reflect the read status
@@ -269,6 +329,38 @@ const TenantMatches = () => {
   const handleLeaseAction = (matchId: string, leaseId?: string) => {
     if (leaseId) {
       navigate(`/tenant/lease/${leaseId}`);
+    }
+  };
+
+  const handleDeleteMatch = async (match: Match) => {
+    if (!window.confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      // Delete the chat
+      await chatApi.deleteChatRoom(match.id, user?.id || '');
+      
+      // Remove the match from the local state
+      setMatches(prev => prev.filter(m => m.id !== match.id));
+      
+      // Close the chat window if it's open for this match
+      if (selectedChat?.chatRoomId === match.id) {
+        setSelectedChat(null);
+      }
+      
+      toast({
+        title: "Chat Deleted",
+        description: "The chat has been successfully deleted.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete the chat. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -401,6 +493,14 @@ const TenantMatches = () => {
                         📄 Review Lease
                       </Button>
                     )}
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                      onClick={() => handleDeleteMatch(match)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -493,6 +593,14 @@ const TenantMatches = () => {
                         📄 Review Lease
                       </Button>
                     )}
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                      onClick={() => handleDeleteMatch(match)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -512,6 +620,11 @@ const TenantMatches = () => {
         </Tabs>
       </div>
 
+      {/* Blur Overlay */}
+      {selectedChat && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40" />
+      )}
+
       {/* Chat Window */}
       {selectedChat && (
         <div className="fixed bottom-4 right-4 z-50 w-[350px] h-[500px] bg-white rounded-lg shadow-2xl border border-gray-200 overflow-hidden max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]">
@@ -520,7 +633,11 @@ const TenantMatches = () => {
               variant="ghost"
               size="icon"
               className="absolute top-2 right-2 z-10 bg-white rounded-full shadow-md hover:bg-gray-100"
-              onClick={() => setSelectedChat(null)}
+              onClick={() => {
+                setSelectedChat(null);
+                // Refresh matches data instead of reloading the entire page
+                fetchMatches();
+              }}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -535,7 +652,11 @@ const TenantMatches = () => {
               propertyId={selectedChat.propertyId}
                 chatRoomId={selectedChat.chatRoomId}
                 isFullPage={false}
-                onClose={() => setSelectedChat(null)}
+                onClose={() => {
+                  setSelectedChat(null);
+                  // Refresh matches data instead of reloading the entire page
+                  fetchMatches();
+                }}
             />
             </div>
           </div>
