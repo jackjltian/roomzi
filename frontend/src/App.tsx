@@ -166,6 +166,14 @@ const App = () => (
                 } 
               />
               <Route 
+                path="/edit-listing/:currentListing" 
+                element={
+                  <RoleProtectedRoute requiredRole="landlord">
+                    <CreateListing />
+                  </RoleProtectedRoute>
+                } 
+              />
+              <Route 
                 path="/payments" 
                 element={
                   <RoleProtectedRoute requiredRole="landlord">

@@ -1,36 +1,51 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Home, Image } from 'lucide-react';
+import { ArrowLeft, Home, Image, X } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/context/AuthContext';
+import { useParams, useLocation } from 'react-router-dom';
 
 const CreateListing = () => {
   const { user } = useAuth();
+  const { currentListing } = useParams();
+  const location = useLocation();
+  const editListing = location.state?.listing;
+  const [newImages, setNewImages] = useState<File[]>([]);
+
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    title: '',
-    type: 'room',
-    address: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    bedrooms: 1,
-    bathrooms: 1,
-    area: '',
-    price: '',
-    description: '',
-    leaseType: 'long-term',
-    amenities: [],
-    requirements: '',
-    houseRules: '',
-    images: [] as File[],
+    title: editListing?.title || '',
+    type: editListing?.type || 'room',
+    address: editListing?.address || '',
+    city: editListing?.city || '',
+    state: editListing?.state || '',
+    zipCode: editListing?.zip_code || '',
+    bedrooms: editListing?.bedrooms || 1,
+    bathrooms: editListing?.bathrooms || 1,
+    area: editListing?.area || '',
+    price: editListing?.price || '',
+    description: editListing?.description || '',
+    leaseType: editListing?.lease_type || 'long-term',
+    amenities: editListing?.amenities || [],
+    requirements: editListing?.requirements || '',
+    houseRules: editListing?.house_rules || '',
+    images: (() => {
+      try {
+        return JSON.parse(editListing?.images);
+      } catch (error) {
+        return [];
+      }
+    })() as (string | File)[],
     landlordId: user.id
   });
 
@@ -45,6 +60,70 @@ const CreateListing = () => {
     'WiFi', 'Kitchen', 'Laundry', 'Parking', 'Balcony', 'Gym', 
     'Pool', 'Concierge', 'Pet Friendly', 'Garden', 'Storage'
   ];
+
+  const searchAddress = async (query: string) => {
+    if (!query) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=5&dedupe=1&addressdetails=1&countrycodes=ca,us&q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            'User-Agent': 'Roomzi/1.0' // Required by Nominatim
+          }
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch address suggsestions");
+      }
+
+      const data = await response.json();
+      setAddressSuggestions(data);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error("Error fetching address suggestions:", error);
+      setAddressSuggestions([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  const handleSelectAddress = (suggestion: any) => {
+    if (!suggestion || !suggestion.address) return;
+
+    console.log("Selecting address:", suggestion);
+    const address = suggestion.address;
+
+    setFormData(prev => ({
+      ...prev,
+      address: (address.house_number || '') + ' ' + (address.road || ''),
+      city: address.city || address.town || address.village || '',
+      state: address.state || '',
+      zipCode: address.postcode || '',
+    }));
+
+    setShowSuggestions(false);
+    setAddressSuggestions([]);
+  }
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (formData.address && formData.address.length > 2) {
+        searchAddress(formData.address);
+      } else {
+        setAddressSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 1000); // Delay by 1 second due to limits with Nominatim
+
+    return () => clearTimeout(timeout);
+  }, [formData.address]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -65,11 +144,16 @@ const CreateListing = () => {
   const handleUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      const newFiles = Array.from(files);
+      const newFiles = Array.from(files).filter(file => file instanceof File);
       setFormData(prev => ({
         ...prev,
         images: [...prev.images, ...newFiles]
       }));
+
+      if (editListing) {
+        setNewImages(newFiles);
+        console.log("New images:", newImages);
+      }
     }
   };
 
@@ -122,44 +206,130 @@ const CreateListing = () => {
     return imageUrls;
   };
 
+  const validateAddress = async () => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&street=${formData.address}&city=${formData.city}&state=${formData.state}&postalcode=${formData.zipCode}`,
+        {
+          headers: {
+            'User-Agent': 'Roomzi/1.0' // Required by Nominatim
+          }
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error("Failed to validate address");
+      }
+
+      const data = await response.json();
+      if (data && data.length > 0) {
+        setAddressError(null);
+        return true;
+      } else {
+        setAddressError("Please enter a valid address");
+        return false;
+      }
+    } catch (error) {
+      console.error("Error validating address:", error);
+      setAddressError("The address could not be validated");
+      return false;
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    try {
-      let imageUrls = [];
+    const isValid = await validateAddress();
+    if (!isValid) {
+      document.getElementById('address')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      console.log("Address is not valid");
+      return;
+    }
 
-      if (formData.images.length > 0) {
-        imageUrls = await uploadImages(formData.images);
+    if (currentListing && editListing) {
+      console.log("Editing listing", currentListing);
+
+      try {
+        let imageUrls = formData.images.filter(
+          (img): img is string => typeof img === "string" && img.trim() !== ""
+        ) || [];
+        
+        console.log("Image URLs:", imageUrls);
+
+        if (newImages.length > 0) {
+          const newImageUrls = await uploadImages(newImages);
+          imageUrls = [...imageUrls, ...newImageUrls];
+        }
+
+        const payload = {
+          ...formData,
+          images: JSON.stringify(imageUrls)
+        };
+        
+        console.log('Updating listing:', payload);
+
+        const response = await fetch(`http://localhost:3001/api/listings/${currentListing}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to edit listing.');
+        }
+
+        const result = await response.json();
+        console.log('Listing edited successfully:', result);
+
+        navigate('/landlord');
+      } catch (error) {
+        console.error('Error editing listing:', error);
+        alert(error.message || 'Failed to edit listing.');
       }
 
-      const payload = {
-        ...formData,
-        images: imageUrls
-      };
-      
-      console.log('Creating listing:', payload);
+    } else {
+      console.log("Creating listing");
 
-      const response = await fetch('http://localhost:3001/api/landlord/create-listing', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
+      try {
+        let imageUrls = [];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create listing.');
+        if (formData.images.length > 0) {
+          imageUrls = await (formData.images);
+        }
+
+        const payload = {
+          ...formData,
+          images: imageUrls
+        };
+        
+        console.log('Creating listing:', payload);
+
+        const response = await fetch('http://localhost:3001/api/landlord/create-listing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to create listing.');
+        }
+
+        const result = await response.json();
+        console.log('Listing created successfully:', result);
+
+        navigate('/landlord');
+      } catch (error) {
+        console.error('Error creating listing:', error);
+        alert(error.message || 'Failed to create listing.');
       }
-
-      const result = await response.json();
-      console.log('Listing created successfully:', result);
-
-      navigate('/landlord');
-    } catch (error) {
-      console.error('Error creating listing:', error);
-      alert(error.message || 'Failed to create listing.');
     }
   };
 
@@ -177,7 +347,7 @@ const CreateListing = () => {
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard
             </Button>
-            <h1 className="text-2xl font-bold text-roomzi-blue">Create Listing</h1>
+            <h1 className="text-2xl font-bold text-roomzi-blue">{currentListing ? "Edit Listing" : "Create Listing"}</h1>
             <div className="w-32"></div> {/* Spacer for centering */}
           </div>
         </div>
@@ -228,7 +398,22 @@ const CreateListing = () => {
                   onChange={(e) => handleInputChange('address', e.target.value)}
                   placeholder="123 Main Street"
                   required
+                  className={addressError ? "border-red-500" : ""}
                 />
+                {/* Address Suggestions */}
+                {showSuggestions && addressSuggestions.length > 0 && (
+                  <div className='border border-2 rounded-md'>
+                    {addressSuggestions.map((suggestion, index) => (
+                      <Button 
+                        className="w-full bg-white text-gray-700 hover:bg-blue-100"
+                        key={index} 
+                        onClick={() => handleSelectAddress(suggestion)}
+                      >
+                        <div className="font-medium text-sm w-full text-wrap text-left">{suggestion.display_name}</div>
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <Label htmlFor="city">City</Label>
@@ -238,6 +423,7 @@ const CreateListing = () => {
                   onChange={(e) => handleInputChange('city', e.target.value)}
                   placeholder="San Francisco"
                   required
+                  className={addressError ? "border-red-500" : ""}
                 />
               </div>
               <div>
@@ -248,6 +434,7 @@ const CreateListing = () => {
                   onChange={(e) => handleInputChange('state', e.target.value)}
                   placeholder="CA"
                   required
+                  className={addressError ? "border-red-500" : ""}
                 />
               </div>
               <div>
@@ -258,9 +445,15 @@ const CreateListing = () => {
                   onChange={(e) => handleInputChange('zipCode', e.target.value)}
                   placeholder="94102"
                   required
+                  className={addressError ? "border-red-500" : ""}
                 />
               </div>
             </div>
+            {addressError && (
+              <div className="text-red-500 text-sm mt-2">
+                {addressError}
+              </div>
+            )}
           </Card>
 
           {/* Property Details */}
@@ -417,23 +610,35 @@ const CreateListing = () => {
                 onChange={handleUploadFile}
                 style={{ display: 'none' }}
               />
-              <div className="mt-4">
+              <div className="mt-8">
                 {formData.images.length > 0 && (
-                  <ul className="list-disc pl-5">
-                    {formData.images.map((file, index) => (
-                      <li key={index} className="flex justify-center items-center text-gray-700">
-                        <span>{file.name}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteFile(index)}
-                          className="ml-4 text-red-500"
-                        >
-                          X
-                        </Button>
-                      </li>
-                    ))}
+                  <ul className="grid grid-cols-4 gap-4">
+                    {formData.images.map((file, index) => {
+                      let src: string | null;
+
+                      if (file instanceof File) {
+                        src = URL.createObjectURL(file);
+                      } else if (typeof file === 'string') {
+                        src = file;
+                      }
+
+                      if (!src) return null;
+                      
+                      return (
+                        <Card key={index} className="relative shadow-sm">
+                          <img src={src} className="w-full h-40 object-contain" />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteFile(index)}
+                            className="text-red-500 hover:bg-red-500 hover:text-white absolute top-0 right-0"
+                          >
+                            <X />
+                          </Button>
+                        </Card>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -447,7 +652,7 @@ const CreateListing = () => {
             </Button>
             <Button type="submit" className="roomzi-gradient">
               <Home className="w-4 h-4 mr-2" />
-              Create Listing
+              {currentListing ? "Save Changes" : "Create Listing"}
             </Button>
           </div>
         </form>
