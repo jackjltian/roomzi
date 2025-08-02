@@ -31,13 +31,14 @@ const convertBigIntToString = (obj) => {
 // Create a new payment request
 export const createPayment = async (req, res) => {
   try {
-    const { tenantId, amount, listingId } = req.body;
+
+    const { tenantId, amount, listingId, month } = req.body;
     
     // Validate required fields
-    if (!tenantId || !amount || !listingId) {
+    if (!tenantId || !amount || !listingId || !month) {
       return res.status(400).json({ 
         success: false, 
-        error: 'tenantId, listingId, and amount are required' 
+        error: 'tenantId, listingId, amount and month are required' 
       });
     }
 
@@ -66,6 +67,7 @@ export const createPayment = async (req, res) => {
         amount: parseFloat(amount),
         status: "Pending",
         proofUrl,
+        month: month || null,
       },
     });
     
@@ -144,12 +146,32 @@ export const updatePaymentStatus = async (req, res) => {
         error: 'Invalid status. Must be one of: Pending, Approved, Rejected' 
       });
     }
-
+    
+    // Get the payment request to find the tenant ID
+    const paymentRequest = await prisma.payment_requests.findUnique({
+      where: { id: parseInt(paymentId) },
+    });
+    
+    if (!paymentRequest) {
+      return res.status(404).json({ success: false, error: 'Payment request not found' });
+    }
+    
     const updatedPayment = await prisma.payment_requests.update({
       where: { id: parseInt(paymentId) },
       data: { status },
     });
+    
     const responseData = convertBigIntToString(updatedPayment);
+    
+    // Emit WebSocket event to notify tenant about payment status update
+    if (req.io) {
+      req.io.emit('payment-status-updated', {
+        paymentId: paymentId,
+        status: status,
+        tenantId: paymentRequest.tenantId
+      });
+    }
+    
     res.json({ success: true, payment: responseData });
   } catch (err) {
     console.error('Error updating payment status:', err);

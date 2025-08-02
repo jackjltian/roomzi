@@ -2,6 +2,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// @seed="node prisma/seed.js"
+
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -117,6 +119,7 @@ model payment_requests {
   tenantId          String             @db.Uuid
   listing_id        String?            @db.Uuid
   landlord_profiles landlord_profiles? @relation(fields: [listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
 }
 
 model maintenance_requests {

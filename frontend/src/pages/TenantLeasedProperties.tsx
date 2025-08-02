@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getLeasesForTenant } from '@/utils/api';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
-import { ArrowLeft, Home, MapPin, ArrowBigLeft } from 'lucide-react';
+import { ArrowLeft, Home, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -98,9 +98,27 @@ const TenantLeasedProperties: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 pb-10 relative">
-      <div className="max-w-3xl mx-auto py-8 px-4">
-        <h2 className="text-3xl font-extrabold mb-8 text-gray-900">My Leased Properties</h2>
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/tenant')}
+                className="mr-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <h1 className="text-2xl font-bold text-roomzi-blue">My Leased Properties</h1>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {loading ? (
           <div className="grid gap-8 md:grid-cols-2">
             {[...Array(2)].map((_, i) => <SkeletonCard key={i} />)}
@@ -204,15 +222,6 @@ const TenantLeasedProperties: React.FC = () => {
           </div>
         )}
       </div>
-      {/* Floating Back to Dashboard Button */}
-      <Button
-        variant="secondary"
-        className="fixed bottom-6 right-6 z-50 shadow-lg flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 hover:bg-blue-100 text-blue-700 border border-blue-200"
-        onClick={() => navigate('/tenant')}
-      >
-        <ArrowBigLeft className="w-5 h-5" />
-        Dashboard
-      </Button>
     </div>
   );
 };

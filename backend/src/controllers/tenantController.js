@@ -388,11 +388,11 @@ export const getTenantListings = async (req, res) => {
 
     console.log("Fetching listings for tenant ID:", id);
 
-    // Fetch listings for the tenant, including landlord_profiles and leases
+    // Fetch all listings for the tenant where tenant_id matches
+
     const listings = await prisma.listings.findMany({
-      where: {
-        tenant_id: id,
-        available: false, // Only show occupied properties
+      where: { 
+        tenant_id: id
       },
       include: {
         landlord_profiles: {
@@ -414,12 +414,6 @@ export const getTenantListings = async (req, res) => {
     });
 
     console.log("Found listings:", listings.length, "for tenant:", id);
-
-    // Convert BigInt to string for JSON serialization
-    const responseData = listings.map((listing) => ({
-      ...listing,
-      id: listing.id.toString(),
-    }));
 
     // Process listings with lease data and landlord contact info
     const listingsWithLeaseDates = listings.map((listing) => {
@@ -472,14 +466,67 @@ export const getTenantListings = async (req, res) => {
       };
     });
 
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(listingsWithLeaseDates);
+
     res.json(
-      successResponse(
-        listingsWithLeaseDates,
-        "Tenant listings retrieved successfully"
-      )
+      successResponse(responseData, "Tenant listings retrieved successfully")
+
     );
   } catch (error) {
     console.error("Error fetching tenant listings:", error);
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Get tenant's lease data
+export const getTenantLeases = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch all leases for the tenant
+    const leases = await prisma.leases.findMany({
+      where: { 
+        tenant_id: id 
+      },
+      include: {
+        listings: {
+          select: {
+            id: true,
+            title: true,
+            address: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    // Process leases with listing info
+    const leasesWithListingInfo = leases.map((lease) => ({
+      id: lease.id,
+      start_date: lease.start_date ? lease.start_date.toISOString().split('T')[0] : null,
+      end_date: lease.end_date ? lease.end_date.toISOString().split('T')[0] : null,
+      rent: lease.rent,
+      signed: lease.signed,
+      listing: lease.listings ? {
+        id: lease.listings.id.toString(),
+        title: lease.listings.title,
+        address: lease.listings.address,
+        city: lease.listings.city,
+        state: lease.listings.state,
+      } : null,
+    }));
+
+    // Convert BigInt to string for JSON serialization
+    const responseData = convertBigIntToString(leasesWithListingInfo);
+    
+    res.json(
+      successResponse(responseData, "Tenant leases retrieved successfully")
+    );
+  } catch (error) {
+    console.error("Error fetching tenant leases:", error);
     res.status(500).json(errorResponse(error));
   }
 };
