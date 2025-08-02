@@ -3,15 +3,16 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut, Calendar as CalendarIcon, XCircle, CheckCircle, Clock } from 'lucide-react';
+import { MapPin, Home, User, Settings, MessageCircle, Search, Grid, Map as MapIcon, LogOut, Calendar as CalendarIcon, XCircle, CheckCircle, Clock, Eye } from 'lucide-react';
 import { Property } from '@/data/sampleProperties';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
-import { getApiBaseUrl, getLeasesForTenant, getNotificationSummary } from '@/utils/api';
+import { getApiBaseUrl, getLeasesForTenant, getNotificationSummary, tenantApi } from '@/utils/api';
 import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
+import { calculateDistance, parseCoordinates, geocodeAddress } from '@/lib/utils';
 
 // Helper to safely parse JSON fields
 const parseMaybeJson = (value, fallback = []) => {
@@ -59,6 +60,22 @@ const TenantDashboard = () => {
   const [lastNotificationFetch, setLastNotificationFetch] = useState(0);
   const [notificationRetryCount, setNotificationRetryCount] = useState(0);
 
+  // Add notification settings state
+  const [viewingRequestNotifications, setViewingRequestNotifications] = useState(true);
+
+  // Add tenant preferences state
+  const [tenantPreferences, setTenantPreferences] = useState({
+    preferredHouseTypes: [] as string[],
+    preferredRentMin: undefined as number | undefined,
+    preferredRentMax: undefined as number | undefined,
+    preferredDistance: undefined as number | undefined,
+    address: '',
+  });
+
+  // Add tenant coordinates state
+  const [tenantCoordinates, setTenantCoordinates] = useState<{ lat: number; lon: number } | null>(null);
+  const [geocodingComplete, setGeocodingComplete] = useState(false);
+
   // Debug: Log current user info
   useEffect(() => {
     console.log('🔍 Current user info:', {
@@ -74,6 +91,7 @@ const TenantDashboard = () => {
 
   useEffect(() => {
     fetchProfile();
+    fetchTenantPreferences();
   }, [user]);
 
   useEffect(() => {
@@ -139,12 +157,22 @@ const TenantDashboard = () => {
 
   const fetchViewings = async () => {
     if (!user) return;
+    console.log('🔄 Fetching viewing requests for tenant:', user.id);
     setLoadingViewings(true);
     try {
-      // Fetch all requests for this tenant
-      const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`);
+      // Fetch all requests for this tenant with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const res = await apiFetch(`${getApiBaseUrl()}/api/viewings/tenant?tenantId=${user.id}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      console.log('📡 Viewing requests response:', res);
       setViewings(res);
     } catch (err) {
+      console.error('❌ Error fetching viewing requests:', err);
       setViewings([]);
     } finally {
       setLoadingViewings(false);
@@ -230,14 +258,26 @@ const TenantDashboard = () => {
           landlordPhone: listing.landlord_phone,
           coordinates: (() => {
             try {
-              if (!listing.coordinates || listing.coordinates === 'null') return { lat: 0, lng: 0 };
+              if (!listing.coordinates || listing.coordinates === 'null') return null;
               if (typeof listing.coordinates === 'string') {
-                return JSON.parse(listing.coordinates);
+                const parsed = JSON.parse(listing.coordinates);
+                // Validate that we have valid lat/lng values
+                if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number' && 
+                    parsed.lat !== 0 && parsed.lng !== 0) {
+                  return parsed;
+                }
+                return null;
               }
-              return listing.coordinates;
+              // Validate that we have valid lat/lng values
+              if (listing.coordinates && typeof listing.coordinates.lat === 'number' && 
+                  typeof listing.coordinates.lng === 'number' && 
+                  listing.coordinates.lat !== 0 && listing.coordinates.lng !== 0) {
+                return listing.coordinates;
+              }
+              return null;
             } catch (e) {
               console.warn('Failed to parse coordinates:', listing.coordinates, e);
-              return { lat: 0, lng: 0 };
+              return null;
             }
           })(),
           available: listing.available,
@@ -245,6 +285,13 @@ const TenantDashboard = () => {
           requirements: parseMaybeJson(listing.requirements, []),
           houseRules: parseMaybeJson(listing.house_rules, []),
         }));
+        
+        // Debug: Log property coordinates
+        console.log('🔍 Loaded properties with coordinates:');
+        transformedProperties.forEach(prop => {
+          console.log(`${prop.address}: coordinates =`, prop.coordinates);
+        });
+        
         setProperties(transformedProperties);
       } else {
         toast({
@@ -268,9 +315,12 @@ const TenantDashboard = () => {
   const fetchProfile = async () => {
     if (!user) return;
     try {
+      console.log('Fetching tenant profile for user ID:', user.id);
       const response = await apiFetch(`${getApiBaseUrl()}/api/tenants/${user.id}`);
+      console.log('Tenant profile response:', response);
       if (response.success && response.data) {
-        const data = response.data.data;
+        const data = response.data;
+        console.log('Tenant profile data:', data);
         setProfile({
           fullName: data.full_name || '',
           email: data.email || '',
@@ -278,25 +328,157 @@ const TenantDashboard = () => {
           location: data.address || '',
           profilePhoto: data.image_url || '',
         });
+        // Set notification settings
+        setViewingRequestNotifications(data.viewingRequestNotifications ?? true);
       }
     } catch (err) {
-      // Optionally show a toast or log error
+      console.error('Error fetching tenant profile:', err);
     }
   };
 
+  const fetchTenantPreferences = async () => {
+    if (!user) return;
+    try {
+      console.log('🔍 Fetching tenant preferences for user:', user.id);
+      // Fetch from main tenant profile instead of separate preferences endpoint
+      const response = await tenantApi.getById(user.id);
+      console.log('📡 Tenant profile API response:', response);
+      
+      if (response.success && response.data) {
+        const data = response.data.data; // Note: nested data structure
+        console.log('📊 Raw tenant profile data:', data);
+        
+        setTenantPreferences({
+          preferredHouseTypes: data.preferredHouseTypes || [],
+          preferredRentMin: data.preferredRentMin,
+          preferredRentMax: data.preferredRentMax,
+          preferredDistance: data.preferredDistance,
+          address: data.address || '',
+        });
+        console.log('✅ Tenant preferences loaded:', {
+          preferredHouseTypes: data.preferredHouseTypes || [],
+          preferredRentMin: data.preferredRentMin,
+          preferredRentMax: data.preferredRentMax,
+          preferredDistance: data.preferredDistance,
+          address: data.address || '',
+        });
+
+        // Geocode the tenant's address if available
+        if (data.address && data.preferredDistance !== undefined) {
+          console.log('🌍 Geocoding tenant address:', data.address);
+          const coords = await geocodeAddress(data.address);
+          setTenantCoordinates(coords);
+          setGeocodingComplete(true);
+          console.log('📍 Tenant coordinates:', coords);
+          
+          if (!coords) {
+            toast({
+              title: "Geocoding Failed",
+              description: `Could not find coordinates for address: ${data.address}. Distance filtering will be disabled.`,
+              variant: "destructive",
+            });
+          } else {
+            console.log(`✅ Successfully geocoded ${data.address} to:`, coords);
+          }
+        } else {
+          console.log('⚠️ No address or distance preference set, skipping geocoding');
+          setGeocodingComplete(true);
+        }
+      } else {
+        console.log('❌ Preferences API call failed:', response);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching tenant preferences:', err);
+    }
+  };
+
+  // Debug: Log current filter states
+  console.log('🔍 Current filter states:', {
+    totalProperties: properties.length,
+    searchTerm,
+    selectedType,
+    priceRange,
+    tenantPreferences,
+    geocodingComplete,
+    tenantCoordinates
+  });
+
   const filteredProperties = properties.filter(property => {
+    console.log(`🔍 Filtering property: ${property.title} (${property.type}) - $${property.price}`);
+    
     const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.city.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesType = selectedType === 'all' || property.type === selectedType;
-
+    // Use tenant preferences for filtering
+    let matchesType = true;
     let matchesPrice = true;
-    if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
-    else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
-    else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
+    let matchesDistance = true;
 
-    return matchesSearch && matchesType && matchesPrice;
+    // House type filtering
+    if (tenantPreferences.preferredHouseTypes.length > 0) {
+      matchesType = tenantPreferences.preferredHouseTypes.includes(property.type);
+      console.log(`🏠 House type filter: ${property.type} in [${tenantPreferences.preferredHouseTypes.join(', ')}] = ${matchesType}`);
+    } else {
+      // Fallback to manual filter if no preferences set
+      matchesType = selectedType === 'all' || property.type === selectedType;
+      console.log(`🏠 Manual type filter: ${property.type} matches '${selectedType}' = ${matchesType}`);
+    }
+
+    // Rent range filtering
+    if (tenantPreferences.preferredRentMin !== undefined && tenantPreferences.preferredRentMin !== null) {
+      matchesPrice = property.price >= tenantPreferences.preferredRentMin;
+      console.log(`💰 Min price filter: $${property.price} >= $${tenantPreferences.preferredRentMin} = ${matchesPrice}`);
+    }
+    if (tenantPreferences.preferredRentMax !== undefined && tenantPreferences.preferredRentMax !== null) {
+      matchesPrice = matchesPrice && property.price <= tenantPreferences.preferredRentMax;
+      console.log(`💰 Max price filter: $${property.price} <= $${tenantPreferences.preferredRentMax} = ${matchesPrice}`);
+    }
+    
+    // If no preferences set, use manual price filter
+    if ((tenantPreferences.preferredRentMin === undefined || tenantPreferences.preferredRentMin === null) && 
+        (tenantPreferences.preferredRentMax === undefined || tenantPreferences.preferredRentMax === null)) {
+      if (priceRange === 'under-2000') matchesPrice = property.price < 2000;
+      else if (priceRange === '2000-4000') matchesPrice = property.price >= 2000 && property.price <= 4000;
+      else if (priceRange === 'over-4000') matchesPrice = property.price > 4000;
+      console.log(`💰 Manual price filter: $${property.price} in range '${priceRange}' = ${matchesPrice}`);
+    }
+
+    // Distance filtering
+    if (tenantPreferences.preferredDistance !== undefined && tenantPreferences.preferredDistance !== null && geocodingComplete) {
+      console.log(`🌍 Distance filtering enabled: ${tenantPreferences.preferredDistance} miles from ${tenantPreferences.address}`);
+      console.log(`📍 Tenant coordinates:`, tenantCoordinates);
+      console.log(`📍 Property coordinates:`, property.coordinates);
+      
+      if (tenantCoordinates && property.coordinates && property.coordinates.lat && property.coordinates.lng) {
+        const distance = calculateDistance(
+          tenantCoordinates.lat,
+          tenantCoordinates.lon,
+          property.coordinates.lat,
+          property.coordinates.lng
+        );
+        console.log(`📏 Distance from ${tenantPreferences.address} to ${property.address}: ${distance} miles (max: ${tenantPreferences.preferredDistance})`);
+        matchesDistance = distance <= tenantPreferences.preferredDistance;
+        console.log(`🌍 Property ${property.address} distance match:`, matchesDistance);
+      } else {
+        // If property doesn't have valid coordinates, filter it out when distance filtering is enabled
+        console.log(`❌ Property ${property.address} has no valid coordinates, filtering it out due to distance preference`);
+        matchesDistance = false;
+      }
+    } else if (tenantPreferences.preferredDistance !== undefined && tenantPreferences.preferredDistance !== null && !geocodingComplete) {
+      console.log('⏳ Geocoding in progress, allowing all properties through temporarily');
+      matchesDistance = true;
+    } else {
+      console.log('🌍 Distance filtering not enabled');
+    }
+
+    const finalResult = matchesSearch && matchesType && matchesPrice && matchesDistance;
+    console.log(`✅ Property ${property.title} final result: ${finalResult} (search: ${matchesSearch}, type: ${matchesType}, price: ${matchesPrice}, distance: ${matchesDistance})`);
+    
+    // TEMPORARY: Show all properties for debugging
+    // return true;
+    
+    return finalResult;
   });
 
   const handlePropertyClick = (propertyId: string) => {
@@ -317,25 +499,14 @@ const TenantDashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Enhanced Header */}
-      <header className="bg-white/95 backdrop-blur-sm shadow-sm border-b sticky top-0 z-20">
+      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Room<span className="text-yellow-500">zi</span>
-              </h1>
-              <Badge variant="secondary" className="ml-3 bg-blue-100 text-blue-700">Tenant</Badge>
+              <h1 className="text-2xl font-bold text-roomzi-blue">Room<span className="text-yellow-500">zi</span></h1>
+              <Badge className="ml-3 bg-green-100 text-green-800">Tenant</Badge>
             </div>
             <div className="flex items-center space-x-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => navigate('/tenant/profile')}
-                className="hover:bg-blue-50"
-              >
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Button>
               <Button 
                 variant="outline" 
                 size="sm"
@@ -352,110 +523,96 @@ const TenantDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24">
         {/* Tenant Profile Info */}
-        <Card className="p-6 mb-6 flex items-center gap-6">
-          <div className="w-20 h-20 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
-            {profile.profilePhoto ? (
-              <img src={profile.profilePhoto} alt="Profile" className="w-20 h-20 object-cover" />
-            ) : (
-              <User className="w-10 h-10 text-gray-400" />
-            )}
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">{profile.fullName || 'Your Name'}</h2>
-            <div className="text-gray-600 text-sm">{profile.email}</div>
-            <div className="text-gray-600 text-sm">{profile.phone}</div>
-            <div className="text-gray-600 text-sm">{profile.location}</div>
-          </div>
-          <div className="ml-auto">
-            <Button variant="outline" size="sm" onClick={() => navigate('/tenant/profile')}>
-              <Settings className="w-4 h-4 mr-2" /> Edit Profile
-            </Button>
-          </div>
-        </Card>
+        {/* REMOVE the profile card at the top (Card with profile info) */}
 
         {/* Enhanced Welcome Section */}
-        <div className="mb-8 text-center">
-          <h2 className="text-4xl font-bold text-gray-900 mb-3">Find Your Perfect Home</h2>
-          <p className="text-gray-600 text-lg">Discover amazing properties with our enhanced search and map view</p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back, {profile.fullName || 'Tenant'}!</h2>
+            <p className="text-gray-600">Find your perfect home with our enhanced search and map view</p>
+          </div>
         </div>
 
         {/* Upcoming Payment Banner */}
         <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
 
-        {/* Viewing Requests Section */}
-        <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
-            <CalendarIcon className="w-5 h-5 mr-2 text-blue-500" />
-            Your Viewing Requests
-          </h2>
-          {loadingViewings ? (
-            <div className="text-gray-500">Loading...</div>
-          ) : viewings.length === 0 ? (
-            <div className="text-gray-500">No viewing requests yet.</div>
-          ) : (
-            <div className="space-y-4">
-              {/* Approved requests as reminders */}
-              {approvedRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
+                {/* Viewing Requests Section - Only show if notifications are enabled */}
+        {viewingRequestNotifications && (
+          <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
+              <Eye className="w-5 h-5 mr-2 text-blue-500" />
+              Viewing Requests
+            </h2>
+            {loadingViewings ? (
+              <div className="text-gray-500">Loading...</div>
+            ) : viewings.length === 0 ? (
+              <div className="text-gray-500">No viewing requests yet.</div>
+            ) : (
+              <div className="space-y-4">
+                {/* Approved requests as reminders */}
+                {approvedRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-green-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
                     </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-semibold text-green-700">Approved</span>
-                  </div>
-                </div>
-              ))}
-              {/* Other requests */}
-              {otherRequests.map((v) => (
-                <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
-                  <div>
-                    <div className="font-medium">{v.listings?.title || 'Property'}</div>
-                    <div className="text-sm text-gray-600">
-                      Requested: {formatDateSafe(v.requestedDateTime)}
-                    </div>
-                    <div className="text-xs text-blue-700">
-                      Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-semibold text-green-700">Approved</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
-                    {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
-                    {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
-                    <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
-                  </div>
-                  {v.status === 'Proposed' && (
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={async () => {
-                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) });
+                ))}
+                {/* Other requests */}
+                {otherRequests.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+                    <div>
+                      <div className="font-medium">{v.listings?.title || 'Property'}</div>
+                      <div className="text-sm text-gray-600">
+                        Requested: {formatDateSafe(v.requestedDateTime)}
+                      </div>
+                      <div className="text-xs text-blue-700">
+                        Proposed: {v.proposedDateTime ? formatDateSafe(v.proposedDateTime) : 'Not set'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {v.status === 'Pending' && <Clock className="w-4 h-4 text-yellow-500" />}
+                      {v.status === 'Declined' && <XCircle className="w-4 h-4 text-red-500" />}
+                      {v.status === 'Proposed' && <Clock className="w-4 h-4 text-blue-500" />}
+                      <span className={`text-sm font-semibold ${v.status === 'Pending' ? 'text-yellow-600' : v.status === 'Declined' ? 'text-red-600' : v.status === 'Proposed' ? 'text-blue-700' : 'text-gray-500'}`}>{v.status}</span>
+                    </div>
+                    {v.status === 'Proposed' && (
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={async () => {
+                          await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Approved' }) });
+                          fetchViewings();
+                        }}>Approve</Button>
+                        <Button size="sm" variant="destructive" onClick={async () => {
+                          await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Declined' }) });
+                          fetchViewings();
+                        }}>Decline</Button>
+                      </div>
+                    )}
+                    {v.status !== 'Closed' && (
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Closed' }) });
                         fetchViewings();
-                      }}>Approve</Button>
-                      <Button size="sm" variant="destructive" onClick={async () => {
-                        await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Declined' }) });
-                        fetchViewings();
-                      }}>Decline</Button>
-                    </div>
-                  )}
-                  {v.status !== 'Closed' && (
-                    <Button size="sm" variant="outline" onClick={async () => {
-                      await apiFetch(`${getApiBaseUrl()}/api/viewings/${v.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'Closed' }) });
-                      fetchViewings();
-                    }}>Close Request</Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                      }}>Close Request</Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Enhanced Search and Filters */}
         <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
+
           <div className="flex flex-col lg:flex-row gap-4 mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -470,7 +627,10 @@ const TenantDashboard = () => {
               <select
                 value={selectedType}
                 onChange={(e) => setSelectedType(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[120px] hover:border-blue-300 transition-colors"
+                disabled={tenantPreferences.preferredHouseTypes.length > 0}
+                className={`px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[120px] hover:border-blue-300 transition-colors ${
+                  tenantPreferences.preferredHouseTypes.length > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
                 <option value="all">All Types</option>
                 <option value="room">Room</option>
@@ -481,7 +641,10 @@ const TenantDashboard = () => {
               <select
                 value={priceRange}
                 onChange={(e) => setPriceRange(e.target.value)}
-                className="px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px] hover:border-blue-300 transition-colors"
+                disabled={tenantPreferences.preferredRentMin !== undefined || tenantPreferences.preferredRentMax !== undefined}
+                className={`px-4 py-3 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white min-w-[140px] hover:border-blue-300 transition-colors ${
+                  (tenantPreferences.preferredRentMin !== undefined || tenantPreferences.preferredRentMax !== undefined) ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
                 <option value="all">All Prices</option>
                 <option value="under-2000">Under $2,000</option>
@@ -610,12 +773,12 @@ const TenantDashboard = () => {
       </div>
 
       {/* Enhanced Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 py-2 shadow-xl">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 shadow-lg">
         <div className="flex justify-around items-center max-w-md mx-auto">
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 text-blue-600 hover:bg-blue-50"
+            className="flex-col h-auto py-2 text-roomzi-blue"
             onClick={() => navigate('/tenant')}
           >
             <Home className="w-5 h-5 mb-1" />
@@ -663,7 +826,7 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 hover:bg-blue-50"
+            className="flex-col h-auto py-2"
             onClick={() => navigate('/tenant/my-house')}
           >
             <MapPin className="w-5 h-5 mb-1" />
@@ -672,7 +835,7 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2 hover:bg-blue-50"
+            className="flex-col h-auto py-2"
             onClick={() => navigate('/tenant/profile')}
           >
             <Settings className="w-5 h-5 mb-1" />

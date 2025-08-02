@@ -90,14 +90,23 @@ export const getLandlordById = async (req, res) => {
 // Create new landlord (with upsert functionality)
 export const createLandlord = async (req, res) => {
   try {
-    const { id, full_name, email, phone, image_url, address, documents } =
-      req.body;
+    const {
+      id,
+      full_name,
+      email,
+      phone,
+      image_url,
+      address,
+      documents,
+      viewingRequestNotifications,
+      rentReminderDays,
+    } = req.body;
 
     // Validate required fields
     if (!id || !email) {
       return res.status(400).json({
         success: false,
-        error: 'id and email are required',
+        error: "id and email are required",
         statusCode: 400,
       });
     }
@@ -112,6 +121,10 @@ export const createLandlord = async (req, res) => {
         ...(phone !== undefined && { phone }),
         ...(image_url !== undefined && { image_url }),
         ...(address !== undefined && { address }),
+        ...(viewingRequestNotifications !== undefined && {
+          viewingRequestNotifications,
+        }),
+        ...(rentReminderDays !== undefined && { rentReminderDays }),
         ...(documents !== undefined && {
           documents: { set: normalizeDocuments(documents) },
         }), // expects array of objects
@@ -124,6 +137,11 @@ export const createLandlord = async (req, res) => {
         phone,
         image_url,
         address,
+        viewingRequestNotifications:
+          viewingRequestNotifications !== undefined
+            ? viewingRequestNotifications
+            : true,
+        rentReminderDays: rentReminderDays !== undefined ? rentReminderDays : 3,
         documents: { set: normalizeDocuments(documents || []) }, // expects array of objects
       },
     });
@@ -146,7 +164,16 @@ export const createLandlord = async (req, res) => {
 export const updateLandlord = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, email, phone, image_url, address, documents } = req.body;
+    const {
+      full_name,
+      email,
+      phone,
+      image_url,
+      address,
+      documents,
+      viewingRequestNotifications,
+      rentReminderDays,
+    } = req.body;
 
     console.log("Updating landlord profile:", { id, documents });
 
@@ -157,6 +184,10 @@ export const updateLandlord = async (req, res) => {
       ...(phone !== undefined && { phone }),
       ...(image_url !== undefined && { image_url }),
       ...(address !== undefined && { address }),
+      ...(viewingRequestNotifications !== undefined && {
+        viewingRequestNotifications,
+      }),
+      ...(rentReminderDays !== undefined && { rentReminderDays }),
       updated_at: new Date(),
     };
 
@@ -414,7 +445,6 @@ export const getPayments = async (req, res) => {
       return res.status(400).json({
         error: "Invalid listing ID provided.",
       });
-
     }
 
     const listingId = BigInt(id);

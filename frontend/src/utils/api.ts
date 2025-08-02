@@ -57,6 +57,12 @@ export interface ProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+  viewingRequestNotifications?: boolean;
+  rentReminderDays?: number;
+  preferredHouseTypes?: string[];
+  preferredRentMin?: number;
+  preferredRentMax?: number;
+  preferredDistance?: number;
 }
 
 export interface LandlordProfileData extends ProfileData {
@@ -189,6 +195,8 @@ const createProfileData = (userId: string, email: string, userMetadata?: any): P
     phone: userMetadata?.phone || null,
     image_url: userMetadata?.avatar_url || userMetadata?.picture || null,
     address: userMetadata?.address || null,
+    viewingRequestNotifications: true,
+    rentReminderDays: 3,
   };
 };
 
@@ -207,6 +215,8 @@ const createLandlordProfileData = (userId: string, email: string, userMetadata?:
     phone: userMetadata?.phone || null,
     image_url: userMetadata?.avatar_url || userMetadata?.picture || null,
     address: userMetadata?.address || null,
+    viewingRequestNotifications: true,
+    rentReminderDays: 3,
     documents: [],
   };
 };
@@ -321,6 +331,7 @@ export const tenantApi = {
   update: async (tenantId: string, profileData: Partial<ProfileData>, skipSync = false): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/tenants/${tenantId}`;
+      console.log('Updating tenant profile:', { tenantId, profileData });
       const response = await apiFetch(url, {
         method: 'PUT',
         body: JSON.stringify(profileData),
@@ -346,6 +357,40 @@ export const tenantApi = {
       return { success: true, data: response };
     } catch (error) {
       console.error('Error fetching tenant listings:', error);
+      throw error;
+    }
+  },
+
+  getPreferences: async (tenantId: string): Promise<ApiResponse> => {
+    try {
+      const url = `${getApiBaseUrl()}/api/tenants/${tenantId}/preferences`;
+      const response = await cachedApiFetch(url, {}, 300000);
+      return { success: true, data: response };
+    } catch (error) {
+      console.error('Error fetching tenant preferences:', error);
+      throw error;
+    }
+  },
+
+  updatePreferences: async (tenantId: string, preferences: {
+    preferredHouseTypes?: string[];
+    preferredRentMin?: number;
+    preferredRentMax?: number;
+    preferredDistance?: number;
+  }): Promise<ApiResponse> => {
+    try {
+      const url = `${getApiBaseUrl()}/api/tenants/${tenantId}/preferences`;
+      const response = await apiFetch(url, {
+        method: 'PUT',
+        body: JSON.stringify(preferences),
+      });
+
+      // Clear cache for this tenant's preferences
+      cache.delete(`${getApiBaseUrl()}/api/tenants/${tenantId}/preferences-{}`);
+
+      return { success: true, data: response };
+    } catch (error) {
+      console.error('Error updating tenant preferences:', error);
       throw error;
     }
   },
