@@ -40,6 +40,7 @@ import TenantLeasedProperties from "./pages/TenantLeasedProperties";
 import RenewLease from "./pages/RenewLease";
 import LandlordLeaseAgreement from "./pages/LandlordLeaseAgreement";
 
+
 // Removed duplicate import of Payments (PaymentHistory)
 // import Payments from "./pages/PaymentHistory";
 
@@ -129,6 +130,7 @@ const App = () => (
                       <Route path="matches" element={<LandlordMatches />} />
                       <Route path="chats" element={<LandlordChats />} />
                       <Route path="listing/:listingId/payments" element={<LandlordPayments />} />
+
                       <Route path="maintenance-requests" element={<LandlordMaintenanceRequests />} />
                       <Route path="viewing-requests" element={<LandlordViewingRequests />} />
 
