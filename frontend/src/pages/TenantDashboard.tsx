@@ -108,7 +108,7 @@ const TenantDashboard = () => {
           address: listing.address,
           city: listing.city,
           state: listing.state,
-          zipCode: listing.zip_code,
+          zip_code: listing.zip_code,
           price: listing.price,
           type: listing.type.toLowerCase(),
           bedrooms: listing.bedrooms,
@@ -117,9 +117,9 @@ const TenantDashboard = () => {
           images: parseMaybeJson(listing.images, []),
           description: listing.description,
           amenities: parseMaybeJson(listing.amenities, []),
-          landlordId: listing.landlord_id,
-          landlordName: listing.landlord_name,
-          landlordPhone: listing.landlord_phone,
+          landlord_id: listing.landlord_id,
+          landlord_name: listing.landlord_name,
+          landlord_phone: listing.landlord_phone,
           coordinates: (() => {
             try {
               if (!listing.coordinates || listing.coordinates === 'null') return { lat: 0, lng: 0 };
@@ -141,9 +141,9 @@ const TenantDashboard = () => {
             }
           })(),
           available: listing.available,
-          leaseType: listing.lease_type,
+          lease_type: listing.lease_type,
           requirements: parseMaybeJson(listing.requirements, []),
-          houseRules: parseMaybeJson(listing.house_rules, []),
+          house_rules: parseMaybeJson(listing.house_rules, []),
         }));
         setProperties(transformedProperties);
       } else {
@@ -198,6 +198,11 @@ const TenantDashboard = () => {
 
     return matchesSearch && matchesType && matchesPrice;
   });
+
+  // Debug: Log properties info
+  console.log('Total properties:', properties.length);
+  console.log('Filtered properties:', filteredProperties.length);
+  console.log('Properties with coordinates:', properties.filter(p => p.coordinates && p.coordinates.lat && p.coordinates.lng).length);
 
   const handlePropertyClick = (propertyId: string) => {
     navigate(`/property/${propertyId}`);

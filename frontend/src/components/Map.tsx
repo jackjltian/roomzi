@@ -18,6 +18,10 @@ const Map: React.FC<MapProps> = ({ properties, onPropertyClick, mapboxToken, onT
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [tokenInput, setTokenInput] = useState('');
 
+  // Debug: Log properties received
+  console.log('Map component received properties:', properties.length);
+  console.log('Properties with valid coordinates:', properties.filter(p => p.coordinates && p.coordinates.lat && p.coordinates.lng).length);
+
   useEffect(() => {
     if (!mapContainer.current || !mapboxToken) return;
 
