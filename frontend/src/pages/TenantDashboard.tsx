@@ -36,7 +36,7 @@ const TenantDashboard = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [mapboxToken, setMapboxToken] = useState<string>(import.meta.env.VITE_MAPBOX_TOKEN || '');
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { toast } = useToast();
@@ -124,7 +124,15 @@ const TenantDashboard = () => {
             try {
               if (!listing.coordinates || listing.coordinates === 'null') return { lat: 0, lng: 0 };
               if (typeof listing.coordinates === 'string') {
-                return JSON.parse(listing.coordinates);
+                // Check if it's a JSON string first
+                if (listing.coordinates.trim().startsWith('{')) {
+                  return JSON.parse(listing.coordinates);
+                }
+                // If it's a comma-separated string like "lat,lng"
+                const coords = listing.coordinates.split(',');
+                if (coords.length === 2) {
+                  return { lat: parseFloat(coords[0].trim()), lng: parseFloat(coords[1].trim()) };
+                }
               }
               return listing.coordinates;
             } catch (e) {
@@ -335,18 +343,8 @@ const TenantDashboard = () => {
               properties={filteredProperties} 
               onPropertyClick={handlePropertyClick}
               mapboxToken={mapboxToken}
+              onTokenSubmit={setMapboxToken}
             />
-            {!mapboxToken && (
-              <div className="absolute bottom-4 right-4 z-10">
-                <input
-                  type="text"
-                  placeholder="Enter Mapbox token..."
-                  value={mapboxToken}
-                  onChange={(e) => setMapboxToken(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            )}
           </Card>
         ) : loading ? (
           <div className="flex items-center justify-center h-[70vh]">

@@ -46,7 +46,7 @@ const PropertyDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [mapboxToken, setMapboxToken] = useState<string>(import.meta.env.VITE_MAPBOX_TOKEN || '');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -69,7 +69,26 @@ const PropertyDetails = () => {
             images: data.images,
             amenities: data.amenities,
             requirements: data.requirements,
-            coordinates: data.coordinates,
+            coordinates: (() => {
+              try {
+                if (!data.coordinates || data.coordinates === 'null') return { lat: 0, lng: 0 };
+                if (typeof data.coordinates === 'string') {
+                  // Check if it's a JSON string first
+                  if (data.coordinates.trim().startsWith('{')) {
+                    return JSON.parse(data.coordinates);
+                  }
+                  // If it's a comma-separated string like "lat,lng"
+                  const coords = data.coordinates.split(',');
+                  if (coords.length === 2) {
+                    return { lat: parseFloat(coords[0].trim()), lng: parseFloat(coords[1].trim()) };
+                  }
+                }
+                return data.coordinates;
+              } catch (e) {
+                console.warn('Failed to parse coordinates:', data.coordinates, e);
+                return { lat: 0, lng: 0 };
+              }
+            })(),
             // Add more mappings as needed
           });
         } else {
@@ -273,25 +292,12 @@ const PropertyDetails = () => {
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
               <h3 className="text-lg font-semibold mb-4">Location</h3>
               <div className="aspect-square rounded-lg overflow-hidden">
-                {mapboxToken ? (
-                  <Map 
-                    properties={[property]} 
-                    onPropertyClick={() => {}}
-                    mapboxToken={mapboxToken}
-                  />
-                ) : (
-                  <div className="h-full bg-gray-100 rounded-lg flex flex-col items-center justify-center p-4">
-                    <MapPin className="w-8 h-8 text-gray-400 mb-2" />
-                    <p className="text-center text-gray-500 text-sm mb-3">Enter Mapbox token to view map</p>
-                    <input
-                      type="text"
-                      placeholder="Mapbox token..."
-                      value={mapboxToken}
-                      onChange={(e) => setMapboxToken(e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                )}
+                <Map 
+                  properties={[property]} 
+                  onPropertyClick={() => {}}
+                  mapboxToken={mapboxToken}
+                  onTokenSubmit={setMapboxToken}
+                />
               </div>
             </Card>
           </div>

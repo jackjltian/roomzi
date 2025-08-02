@@ -32,6 +32,7 @@ import ScrollToTop from './components/ScrollToTop';
 import FAQ from './pages/FAQ';
 import TenantMaintenanceRequest from "./pages/TenantMaintenanceRequest";
 import LandlordMaintenanceRequests from "./pages/LandlordMaintenanceRequests";
+import MapTest from "./pages/MapTest";
 
 // Removed duplicate import of Payments (PaymentHistory)
 // import Payments from "./pages/PaymentHistory";
@@ -52,6 +53,7 @@ const App = () => (
               {/* Public routes - ONLY Index page is public */}
               <Route path="/" element={<Index />} />
               <Route path="/faq" element={<FAQ />} />
+              <Route path="/map-test" element={<MapTest />} />
               
               {/* Auth-related routes - don't require existing auth but handle auth flow */}
               <Route 
