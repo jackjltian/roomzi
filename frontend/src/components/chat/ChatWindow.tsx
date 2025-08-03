@@ -22,7 +22,8 @@ import {
   Trash2,
   Edit2,
   Check,
-  AlertCircle
+  AlertCircle,
+  Bot
 } from 'lucide-react';
 import { EmojiPicker } from './EmojiPicker';
 import { toast } from '@/hooks/use-toast';
@@ -73,6 +74,7 @@ interface Message {
   reactions: Record<string, string[]>;
   isDeleted?: boolean;
   isEditing?: boolean;
+  isAiGenerated?: boolean;
 }
 
 const REACTIONS = [
@@ -264,7 +266,8 @@ export function ChatWindow({
             type: messageType,
             imageUrl: isImageFile ? msg.content : undefined,
             reactions: {},
-            replyTo
+            replyTo,
+            isAiGenerated: msg.isAiGenerated || false
           };
         });
         
@@ -340,7 +343,8 @@ export function ChatWindow({
           type: messageType,
           imageUrl: isImageFile ? fileInfo?.url : undefined,
           reactions: {},
-          replyTo
+          replyTo,
+          isAiGenerated: messageData.isAiGenerated || false
         };
         
         return [...filtered, newMessage];
@@ -997,14 +1001,20 @@ export function ChatWindow({
                       </>
                     ) : (
                       <>
-                        <Avatar className="h-6 w-6">
-                          <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
-                            {getSenderName('other').charAt(0).toUpperCase()}
-                          </div>
-                        </Avatar>
+                        <div className="relative">
+                          <Avatar className="h-6 w-6">
+                            <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
+                              {getSenderName('other').charAt(0).toUpperCase()}
+                            </div>
+                          </Avatar>
+                          {message.isAiGenerated && (
+                            <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-500 rounded-full opacity-75">
+                            </div>
+                          )}
+                        </div>
                         {/* Message bubble */}
                         <div
-                          className={`rounded-2xl p-2 px-4 py-2 pb-1 pr-2 relative max-w-full min-w-0 break-words whitespace-pre-line overflow-x-hidden bg-gray-100 text-gray-900 ${highlightedMessageId === message.id ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
+                          className={`rounded-2xl p-2 px-4 py-2 pb-1 pr-2 relative max-w-full min-w-0 break-words whitespace-pre-line overflow-x-hidden ${message.isAiGenerated ? 'bg-gray-50 border border-gray-150 text-gray-900' : 'bg-gray-100 text-gray-900'} ${highlightedMessageId === message.id ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
                           style={{ wordBreak: 'break-word', overflowY: 'visible' }}
                           onClick={() => handleMessageClick(message.id)}
                         >
