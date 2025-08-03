@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import { prisma } from './prisma.js';
+import { aiService } from '../services/aiService.js';
 
 let io;
 
@@ -145,6 +146,15 @@ export const initializeSocket = (server) => {
           messageId: message.id
         });
 
+        // Trigger AI response if message is from tenant
+        console.log('🔍 Checking landlord auto-reply:', { senderType: data.senderType, aiAvailable: aiService.isAvailable() });
+        if (data.senderType === 'tenant' && aiService.isAvailable()) {
+          console.log('🏠 Generating landlord response for tenant message:', message.content);
+          await handleAIResponse(data.chatId, message, chat);
+        } else {
+          console.log('⏭️ Skipping auto-reply:', data.senderType !== 'tenant' ? 'not tenant message' : 'landlord replies disabled');
+        }
+
       } catch (error) {
         console.error('Error handling message:', error);
         socket.emit('message-error', { 
@@ -161,6 +171,94 @@ export const initializeSocket = (server) => {
 
   return io;
 };
+
+/**
+ * Handle AI response generation for tenant messages
+ * @param {string} chatId - Chat room ID
+ * @param {Object} tenantMessage - The tenant's message object
+ * @param {Object} chat - Chat room object with IDs
+ */
+async function handleAIResponse(chatId, tenantMessage, chat) {
+  try {
+    // Process AI response immediately for faster responses
+    try {
+        // Get recent messages for context
+        const recentMessages = await prisma.messages.findMany({
+          where: { chat_id: chatId },
+          orderBy: { created_at: 'desc' },
+          take: 10
+        });
+
+        // Get landlord and tenant profile information
+        const [landlordProfile, tenantProfile] = await Promise.all([
+          prisma.landlord_profiles.findUnique({
+            where: { id: chat.landlord_id },
+            select: { full_name: true }
+          }),
+          prisma.tenant_profiles.findUnique({
+            where: { id: chat.tenant_id },
+            select: { full_name: true }
+          })
+        ]);
+
+        // Get property information
+        let propertyTitle = 'Property';
+        if (chat.property_id && !isNaN(chat.property_id)) {
+          const listing = await prisma.listings.findUnique({
+            where: { id: BigInt(chat.property_id) },
+            select: { title: true }
+          });
+          propertyTitle = listing?.title || 'Property';
+        }
+
+        // Prepare context for AI service
+        const context = {
+          tenantMessage: tenantMessage.content,
+          propertyTitle,
+          tenantName: tenantProfile?.full_name || 'Tenant',
+          landlordName: landlordProfile?.full_name || 'Landlord',
+          recentMessages: recentMessages.reverse(), // Chronological order for context
+          // Additional context for scheduling functionality
+          landlordId: chat.landlord_id,
+          tenantId: chat.tenant_id,
+          propertyId: chat.property_id,
+          chatId: chatId
+        };
+
+        // Generate AI response
+        const aiResponse = await aiService.generateLandlordResponse(context);
+        
+        if (aiResponse) {
+          // Create AI message in database
+          const aiMessage = await prisma.messages.create({
+            data: {
+              chat_id: chatId,
+              sender_id: chat.landlord_id,
+              content: aiResponse,
+              sender_type: 'landlord'
+            }
+          });
+
+          // Broadcast landlord response to chat room
+          console.log(`🏠 Broadcasting landlord response to chat-${chatId}: ${aiResponse}`);
+          io.to(`chat-${chatId}`).emit('new-message', {
+            id: aiMessage.id,
+            chat_id: aiMessage.chat_id,
+            sender_id: aiMessage.sender_id,
+            content: aiMessage.content,
+            sender_type: aiMessage.sender_type,
+            created_at: aiMessage.created_at,
+            reply_to_id: aiMessage.reply_to_id,
+            isAiGenerated: true // Flag to identify AI messages on frontend
+          });
+        }
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+    }
+  } catch (error) {
+    console.error('Error in handleAIResponse setup:', error);
+  }
+}
 
 export const getIO = () => {
   if (!io) {
