@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Driven Devs Docker Build Script
-# This script builds and runs the Docker containers for the Driven Devs application
+# Driven Devs CD Pipeline - Deployment Script
+# This script pulls Docker images from Docker Hub and deploys the application
 
 set -e  # Exit on any error
 
-echo "🚀 Starting Driven Devs Docker Build Process..."
+echo "🚀 Starting Driven Devs CD Pipeline - Deployment Phase..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -30,6 +30,12 @@ print_warning() {
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# Configuration
+DOCKER_REGISTRY="thushshan"
+FRONTEND_IMAGE="roomzi-frontend"
+BACKEND_IMAGE="roomzi-backend"
+IMAGE_TAG="1.0.0"
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
@@ -177,37 +183,100 @@ check_env_files() {
         exit 1
     fi
 }
-
-# Function to build images
-build_images() {
-    print_status "Building Docker images..."
-    
-    # Build backend image
-    print_status "Building backend image..."
-    docker build -f Dockerfile.backend -t driven-devs-backend ..
-    
-    # Build frontend image
-    print_status "Building frontend image..."
-    docker build -f Dockerfile.frontend -t driven-devs-frontend ..
-    
-    print_success "Docker images built successfully!"
+            
+            echo "# Additional Configuration:"
+            echo "# Make sure to update all placeholder values with your actual configuration"
+            
+        } > ../.env
+        
+        print_success ".env file created successfully from templates!"
+        print_warning "Please update the .env file with your actual configuration values before running the containers."
+        exit 1
+    fi
 }
 
-# Function to run containers
-run_containers() {
-    print_status "Starting containers with docker-compose..."
+# Function to pull images from Docker Hub
+pull_images() {
+    print_status "Pulling Docker images from Docker Hub..."
+    
+    # Pull backend image
+    print_status "Pulling backend image: ${DOCKER_REGISTRY}/${BACKEND_IMAGE}:${IMAGE_TAG}"
+    if docker pull "${DOCKER_REGISTRY}/${BACKEND_IMAGE}:${IMAGE_TAG}"; then
+        print_success "Backend image pulled successfully!"
+    else
+        print_error "Failed to pull backend image"
+        exit 1
+    fi
+    
+    # Pull frontend image
+    print_status "Pulling frontend image: ${DOCKER_REGISTRY}/${FRONTEND_IMAGE}:${IMAGE_TAG}"
+    if docker pull "${DOCKER_REGISTRY}/${FRONTEND_IMAGE}:${IMAGE_TAG}"; then
+        print_success "Frontend image pulled successfully!"
+    else
+        print_error "Failed to pull frontend image"
+        exit 1
+    fi
+}
+
+# Function to deploy containers
+deploy_containers() {
+    print_status "Deploying containers..."
     
     # Stop any existing containers
+    print_status "Stopping existing containers..."
     docker-compose down 2>/dev/null || true
     
-    # Start containers
+    # Start containers using pulled images
+    print_status "Starting containers with pulled images..."
     docker-compose up -d
     
-    print_success "Containers started successfully!"
+    print_success "Containers deployed successfully!"
 }
 
-# Function to show status
-show_status() {
+# Function to wait for services to be ready
+wait_for_services() {
+    print_status "Waiting for services to be ready..."
+    
+    # Wait for backend
+    print_status "Waiting for backend service..."
+    local backend_ready=false
+    for i in {1..30}; do
+        if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
+            backend_ready=true
+            print_success "Backend service is ready!"
+            break
+        fi
+        echo -n "."
+        sleep 2
+    done
+    
+    if [ "$backend_ready" = false ]; then
+        print_warning "Backend service may not be fully ready"
+    fi
+    
+    # Wait for frontend
+    print_status "Waiting for frontend service..."
+    local frontend_ready=false
+    for i in {1..30}; do
+        if curl -f http://localhost:80 > /dev/null 2>&1; then
+            frontend_ready=true
+            print_success "Frontend service is ready!"
+            break
+        fi
+        echo -n "."
+        sleep 2
+    done
+    
+    if [ "$frontend_ready" = false ]; then
+        print_warning "Frontend service may not be fully ready"
+    fi
+}
+
+# Function to show deployment status
+show_deployment_status() {
+    print_status "Deployment completed successfully!"
+    
+    echo ""
     print_status "Container status:"
     docker-compose ps
     
@@ -215,78 +284,23 @@ show_status() {
     print_status "Application URLs:"
     echo -e "  Frontend: ${GREEN}http://localhost:80${NC}"
     echo -e "  Backend API: ${GREEN}http://localhost:3001${NC}"
+    echo -e "  Health Check: ${GREEN}http://localhost:3001/api/health${NC}"
     
     echo ""
     print_status "Useful commands:"
     echo -e "  View logs: ${YELLOW}docker-compose logs -f${NC}"
     echo -e "  Stop containers: ${YELLOW}docker-compose down${NC}"
-    echo -e "  Restart containers: ${YELLOW}docker-compose restart${NC}"
+    echo -e "  Run tests: ${YELLOW}./test-deployed.sh${NC}"
 }
 
-# Function to show logs
-show_logs() {
-    print_status "Showing container logs (Ctrl+C to exit)..."
-    docker-compose logs -f
+# Main deployment process
+main() {
+    check_env_files
+    pull_images
+    deploy_containers
+    wait_for_services
+    show_deployment_status
 }
 
-# Function to stop containers
-stop_containers() {
-    print_status "Stopping containers..."
-    docker-compose down
-    print_success "Containers stopped successfully!"
-}
-
-# Function to clean up
-cleanup() {
-    print_status "Cleaning up Docker resources..."
-    
-    # Stop and remove containers
-    docker-compose down -v 2>/dev/null || true
-    
-    # Remove images
-    docker rmi driven-devs-backend driven-devs-frontend 2>/dev/null || true
-    
-    # Remove unused volumes
-    docker volume prune -f 2>/dev/null || true
-    
-    print_success "Cleanup completed!"
-}
-
-# Main script logic
-case "${1:-build}" in
-    "build")
-        check_env_files
-        build_images
-        run_containers
-        show_status
-        ;;
-    "logs")
-        show_logs
-        ;;
-    "stop")
-        stop_containers
-        ;;
-    "restart")
-        stop_containers
-        run_containers
-        show_status
-        ;;
-    "cleanup")
-        cleanup
-        ;;
-    "status")
-        show_status
-        ;;
-    *)
-        echo "Usage: $0 {build|logs|stop|restart|cleanup|status}"
-        echo ""
-        echo "Commands:"
-        echo "  build    - Build and start containers (default)"
-        echo "  logs     - Show container logs"
-        echo "  stop     - Stop containers"
-        echo "  restart  - Restart containers"
-        echo "  cleanup  - Stop containers and remove images/volumes"
-        echo "  status   - Show container status and URLs"
-        exit 1
-        ;;
-esac 
+# Run main function
+main 

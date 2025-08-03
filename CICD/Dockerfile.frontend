@@ -1,20 +1,19 @@
 # Frontend Dockerfile
-FROM node:18-alpine AS base
-
-# Install dependencies only when needed
-FROM base AS deps
-
-RUN apk add --no-cache libc6-compat
-WORKDIR /app
-
-# Install dependencies based on the preferred package manager
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+FROM node:18-slim AS base
 
 # Rebuild the source code only when needed
+# This stage is now self-contained, handling its own dependencies.
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+# Install dependencies (including devDependencies needed for the build)
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install
+# Explicitly install the missing native binaries and rebuild
+RUN npm install @rollup/rollup-linux-x64-gnu @swc/core-linux-x64-gnu
+RUN npm rebuild
+
+# Copy the rest of the source code
 COPY frontend/ .
 
 # Build the application

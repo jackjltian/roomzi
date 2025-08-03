@@ -1,10 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Driven Devs Docker Build Script for Windows
-REM This script builds and runs the Docker containers for the Driven Devs application
+REM Driven Devs CD Pipeline - Deployment Script for Windows
+REM This script pulls Docker images from Docker Hub and deploys the application
 
-echo 🚀 Starting Driven Devs Docker Build Process...
+echo 🚀 Starting Driven Devs CD Pipeline - Deployment Phase...
+
+REM Configuration
+set DOCKER_REGISTRY=thushshan
+set FRONTEND_IMAGE=roomzi-frontend
+set BACKEND_IMAGE=roomzi-backend
+set IMAGE_TAG=1.0.0
 
 REM Check if Docker is running
 docker info >nul 2>&1
@@ -93,7 +99,7 @@ if not exist "..\frontend\.env" (
 )
 
 echo [SUCCESS] Environment files created from GitHub Secrets!
-goto :continue_build
+goto :continue_deploy
 
 :create_from_templates
 REM Check for backend .env file
@@ -155,73 +161,78 @@ if not exist "..\frontend\.env" (
     exit /b 1
 )
 
-:continue_build
+:continue_deploy
 
-REM Main script logic
-if "%1"=="" (
-    goto build
-) else if "%1"=="build" (
-    goto build
-) else if "%1"=="logs" (
-    goto logs
-) else if "%1"=="stop" (
-    goto stop
-) else if "%1"=="restart" (
-    goto restart
-) else if "%1"=="cleanup" (
-    goto cleanup
-) else if "%1"=="status" (
-    goto status
-) else (
-    goto help
+echo [INFO] Pulling Docker images from Docker Hub...
+
+echo [INFO] Pulling backend image: %DOCKER_REGISTRY%/%BACKEND_IMAGE%:%IMAGE_TAG%
+docker pull %DOCKER_REGISTRY%/%BACKEND_IMAGE%:%IMAGE_TAG%
+if errorlevel 1 (
+    echo [ERROR] Failed to pull backend image
+    pause
+    exit /b 1
+)
+echo [SUCCESS] Backend image pulled successfully!
+
+echo [INFO] Pulling frontend image: %DOCKER_REGISTRY%/%FRONTEND_IMAGE%:%IMAGE_TAG%
+docker pull %DOCKER_REGISTRY%/%FRONTEND_IMAGE%:%IMAGE_TAG%
+if errorlevel 1 (
+    echo [ERROR] Failed to pull frontend image
+    pause
+    exit /b 1
+)
+echo [SUCCESS] Frontend image pulled successfully!
+
+echo [INFO] Deploying containers...
+
+echo [INFO] Stopping existing containers...
+docker-compose down >nul 2>&1
+
+echo [INFO] Starting containers with pulled images...
+docker-compose up -d
+if errorlevel 1 (
+    echo [ERROR] Failed to start containers
+    pause
+    exit /b 1
 )
 
-:build
-echo [INFO] Building Docker images...
+echo [SUCCESS] Containers deployed successfully!
 
-echo [INFO] Building backend image...
-docker build -f Dockerfile.backend -t driven-devs-backend ..
+echo [INFO] Waiting for services to be ready...
 
-echo [INFO] Building frontend image...
-docker build -f Dockerfile.frontend -t driven-devs-frontend ..
+echo [INFO] Waiting for backend service...
+set backend_ready=false
+for /l %%i in (1,1,30) do (
+    curl -f http://localhost:3001/api/health >nul 2>&1
+    if not errorlevel 1 (
+        set backend_ready=true
+        echo [SUCCESS] Backend service is ready!
+        goto :backend_ready
+    )
+    echo -n .
+    timeout /t 2 /nobreak >nul
+)
+echo [WARNING] Backend service may not be fully ready
 
-echo [SUCCESS] Docker images built successfully!
+:backend_ready
+echo [INFO] Waiting for frontend service...
+set frontend_ready=false
+for /l %%i in (1,1,30) do (
+    curl -f http://localhost:80 >nul 2>&1
+    if not errorlevel 1 (
+        set frontend_ready=true
+        echo [SUCCESS] Frontend service is ready!
+        goto :frontend_ready
+    )
+    echo -n .
+    timeout /t 2 /nobreak >nul
+)
+echo [WARNING] Frontend service may not be fully ready
 
-echo [INFO] Starting containers with docker-compose...
-docker-compose down >nul 2>&1
-docker-compose up -d
+:frontend_ready
+echo [INFO] Deployment completed successfully!
 
-echo [SUCCESS] Containers started successfully!
-goto status
-
-:logs
-echo [INFO] Showing container logs (Ctrl+C to exit)...
-docker-compose logs -f
-goto end
-
-:stop
-echo [INFO] Stopping containers...
-docker-compose down
-echo [SUCCESS] Containers stopped successfully!
-goto end
-
-:restart
-echo [INFO] Stopping containers...
-docker-compose down
-echo [INFO] Starting containers...
-docker-compose up -d
-echo [SUCCESS] Containers restarted successfully!
-goto status
-
-:cleanup
-echo [INFO] Cleaning up Docker resources...
-docker-compose down -v >nul 2>&1
-docker rmi driven-devs-backend driven-devs-frontend >nul 2>&1
-docker volume prune -f >nul 2>&1
-echo [SUCCESS] Cleanup completed!
-goto end
-
-:status
+echo.
 echo [INFO] Container status:
 docker-compose ps
 
@@ -229,25 +240,12 @@ echo.
 echo [INFO] Application URLs:
 echo   Frontend: http://localhost:80
 echo   Backend API: http://localhost:3001
+echo   Health Check: http://localhost:3001/api/health
 
 echo.
 echo [INFO] Useful commands:
 echo   View logs: docker-compose logs -f
 echo   Stop containers: docker-compose down
-echo   Restart containers: docker-compose restart
-goto end
+echo   Run tests: test-deployed.bat
 
-:help
-echo Usage: %0 {build^|logs^|stop^|restart^|cleanup^|status}
-echo.
-echo Commands:
-echo   build    - Build and start containers (default)
-echo   logs     - Show container logs
-echo   stop     - Stop containers
-echo   restart  - Restart containers
-echo   cleanup  - Stop containers and remove images/volumes
-echo   status   - Show container status and URLs
-goto end
-
-:end
 pause 

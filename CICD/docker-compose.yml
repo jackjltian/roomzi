@@ -8,14 +8,8 @@ services:
     container_name: driven-devs-backend
     ports:
       - "3001:3001"
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-      # Add your environment variables here
-      # - DATABASE_URL=your_database_url
-      # - SUPABASE_URL=your_supabase_url
-      # - SUPABASE_ANON_KEY=your_supabase_anon_key
-      # - FRONTEND_URL=http://localhost:80
+    env_file:
+      - ../backend/.env
     volumes:
       - backend_uploads:/app/uploads
     restart: unless-stopped
@@ -29,6 +23,8 @@ services:
     container_name: driven-devs-frontend
     ports:
       - "80:80"
+    env_file:
+      - ../frontend/.env
     depends_on:
       - backend
     restart: unless-stopped
