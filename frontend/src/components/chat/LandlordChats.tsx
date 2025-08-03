@@ -9,6 +9,7 @@ import { Badge } from '../ui/badge';
 import { ArrowLeft, MessageCircle, Home } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { useSocket } from '@/context/SocketContext';
 
 interface Chat {
   id: string;
