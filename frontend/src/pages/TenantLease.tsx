@@ -29,7 +29,16 @@ const TenantLease: React.FC = () => {
     'Upload Signed Lease',
     'Complete',
   ];
-  const currentStep = lease?.signed ? 3 : uploadedFile ? 2 : 0;
+  // Calculate current step based on lease status
+  const getCurrentStep = () => {
+    if (!lease) return 0;
+    if (lease.signed) return 3; // Complete
+    if (uploadedFile) return 2; // Upload Signed Lease
+    if (lease.document) return 0; // Download Lease (ready to download)
+    return 0; // No document yet
+  };
+  
+  const currentStep = getCurrentStep();
 
   useEffect(() => {
     const fetchLease = async () => {
@@ -100,6 +109,8 @@ const TenantLease: React.FC = () => {
         await uploadSignedLease(leaseId!, file);
         setUploadSuccess(true);
         setLease((prev: any) => ({ ...prev, signed: true, signed_at: new Date().toISOString() }));
+        // Set state to trigger refresh when navigating back
+        window.history.replaceState({ leaseSigned: true }, document.title);
       } catch (err) {
         setUploadError('Failed to upload signed lease');
       }
@@ -128,6 +139,8 @@ const TenantLease: React.FC = () => {
         await uploadSignedLease(leaseId!, file);
         setUploadSuccess(true);
         setLease((prev: any) => ({ ...prev, signed: true, signed_at: new Date().toISOString() }));
+        // Set state to trigger refresh when navigating back
+        window.history.replaceState({ leaseSigned: true }, document.title);
       } catch (err) {
         setUploadError('Failed to upload signed lease');
       }
@@ -161,11 +174,18 @@ const TenantLease: React.FC = () => {
             {steps.map((step, idx) => (
               <li key={step} className={`flex-1 flex flex-col items-center ${idx <= currentStep ? 'text-blue-600' : 'text-gray-400'}`}>
                 <div className={`w-8 h-8 flex items-center justify-center rounded-full border-2 ${idx <= currentStep ? 'border-blue-600 bg-blue-100' : 'border-gray-300 bg-gray-100'}`}>{idx + 1}</div>
-                <span className="mt-2 text-xs font-semibold">{step}</span>
-                {idx < steps.length - 1 && <div className="h-1 w-full bg-gradient-to-r from-blue-200 to-blue-400 my-2" />}
+                <span className="mt-2 text-xs font-semibold text-center">{step}</span>
               </li>
             ))}
           </ol>
+          {/* Separate progress bar that extends under all steps */}
+          <div className="flex items-center w-full mb-4 -mt-2">
+            {steps.map((step, idx) => (
+              <div key={`progress-${step}`} className="flex-1 flex items-center">
+                <div className={`h-1 w-full ${idx <= currentStep ? 'bg-gradient-to-r from-blue-200 to-blue-400' : 'bg-gray-200'}`} />
+              </div>
+            ))}
+          </div>
           <div className="text-center text-gray-700 text-sm mb-2">
             <strong>How it works:</strong> Download your lease, sign it (digitally or by hand), then upload the signed version below. Only PDF or image files up to 10MB are accepted.
           </div>
@@ -252,7 +272,7 @@ const TenantLease: React.FC = () => {
             </>
           )}
         </div>
-        <Button variant="outline" onClick={() => navigate('/tenant')} className="w-full mt-2">Back to Dashboard</Button>
+        <Button variant="outline" onClick={() => navigate(-1)} className="w-full mt-2">Back</Button>
       </Card>
       <style>{`
         @keyframes fade-in {

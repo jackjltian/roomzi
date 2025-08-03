@@ -259,9 +259,7 @@ const PropertyDetails = () => {
                   <CalendarIcon className="w-4 h-4 mr-2" />
                   Schedule Viewing
                 </Button>
-                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
-                  Call Now
-                </Button>
+
               </div>
             </Card>
 

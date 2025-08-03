@@ -1,6 +1,7 @@
 import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
 import { getIO } from "../config/socket.js";
+import { updateAllChatNames } from "../utils/chatNameUpdater.js";
 
 // Mark messages as read for a specific user
 export const markChatAsRead = async (req, res) => {
@@ -141,6 +142,7 @@ export const getUserChats = async (req, res) => {
           propertyTitle: listing?.title || chat.property_name || 'Unknown Property',
           landlord_name: landlordProfile?.full_name || chat.landlord_name || 'Unknown Landlord',
           unreadCount,
+          unread: unreadCount > 0, // Add boolean unread property for frontend
           property_details: listing ? {
             address: listing.address,
             city: listing.city,
@@ -421,6 +423,20 @@ export const deleteMessage = async (req, res) => {
     if (error.code === "P2025") {
       return res.status(404).json(errorResponse(new Error("Message not found"), 404));
     }
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Manual endpoint to update all chat names (for maintenance)
+export const updateAllChatNamesEndpoint = async (req, res) => {
+  try {
+    console.log('🔄 Manual chat names update requested');
+    
+    const result = await updateAllChatNames();
+    
+    res.json(successResponse(result, "Chat names updated successfully"));
+  } catch (error) {
+    console.error("Error updating chat names:", error);
     res.status(500).json(errorResponse(error));
   }
 };

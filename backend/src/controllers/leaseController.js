@@ -50,6 +50,7 @@ export const createLease = async (req, res) => {
         rent: parseFloat(rent),
         document: data.signedUrl,
         signed,
+        landlordseen: false, // Mark as unseen so landlord gets notification
       },
     });
 
@@ -83,6 +84,7 @@ export const checkHasLease = async (req, res) => {
       },
       select: {
         id: true,
+        signed: true,
       },
     });
 
@@ -234,7 +236,11 @@ export const uploadSignedLease = async (req, res) => {
     // Update lease record
     const updatedLease = await prisma.leases.update({
       where: { id: leaseId },
-      data: { document: urlData.signedUrl, signed: true },
+      data: { 
+        document: urlData.signedUrl, 
+        signed: true,
+        landlordseen: false // Mark as unseen so landlord gets notification
+      },
     });
 
     // Also update the corresponding listing: set tenant_id and available = false
@@ -272,6 +278,65 @@ export const getLeaseHistoryForTenantAndListing = async (req, res) => {
     res.json(successResponse(convertBigIntToString(leases), "Lease history retrieved successfully"));
   } catch (error) {
     console.error("Error fetching lease history:", error);
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Get all leases for a specific listing
+export const getLeasesForListing = async (req, res) => {
+  try {
+    const { listingId } = req.params;
+    if (!listingId) {
+      return res.status(400).json(errorResponse(new Error("Missing listingId"), 400));
+    }
+    const leases = await prisma.leases.findMany({
+      where: {
+        listing_id: BigInt(listingId),
+      },
+      include: {
+        tenant_profiles: {
+          select: {
+            full_name: true,
+          },
+        },
+        listings: {
+          select: {
+            title: true,
+            address: true,
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    });
+    res.json(successResponse(convertBigIntToString(leases), "Leases for listing retrieved successfully"));
+  } catch (error) {
+    console.error("Error fetching leases for listing:", error);
+    res.status(500).json(errorResponse(error));
+  }
+};
+
+// Mark leases as seen by landlord
+export const markLeasesAsSeen = async (req, res) => {
+  try {
+    const { leaseIds } = req.body;
+    if (!leaseIds || !Array.isArray(leaseIds)) {
+      return res.status(400).json(errorResponse(new Error("Missing leaseIds array"), 400));
+    }
+    
+    const updatedLeases = await prisma.leases.updateMany({
+      where: {
+        id: {
+          in: leaseIds
+        }
+      },
+      data: {
+        landlordseen: true
+      }
+    });
+    
+    res.json(successResponse(updatedLeases, "Leases marked as seen successfully"));
+  } catch (error) {
+    console.error("Error marking leases as seen:", error);
     res.status(500).json(errorResponse(error));
   }
 }; 

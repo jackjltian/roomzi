@@ -68,13 +68,33 @@ const TenantLeasedProperties: React.FC = () => {
     }, {})
   );
 
-  // Helper to determine if a lease is active
-  const isLeaseActive = (lease: any) => {
-    if (!lease.start_date || !lease.end_date) return false;
+  // Function to determine rental status based on lease information
+  const determineRentalStatus = (lease: any) => {
+    if (!lease) {
+      return { status: 'No Lease', color: 'bg-gray-100 text-gray-800' };
+    }
+
+    if (!lease.signed) {
+      return { status: 'Lease Pending', color: 'bg-yellow-100 text-yellow-800' };
+    }
+
     const now = new Date();
-    const start = new Date(lease.start_date);
-    const end = new Date(lease.end_date);
-    return now >= start && now <= end;
+    const startDate = lease.start_date ? new Date(lease.start_date) : null;
+    const endDate = lease.end_date ? new Date(lease.end_date) : null;
+
+    if (!startDate || !endDate) {
+      return { status: 'Lease Active', color: 'bg-green-100 text-green-800' };
+    }
+
+    if (now < startDate) {
+      return { status: 'Lease Upcoming', color: 'bg-blue-100 text-blue-800' };
+    } else if (now >= startDate && now <= endDate) {
+      return { status: 'Active Rental', color: 'bg-green-100 text-green-800' };
+    } else if (now > endDate) {
+      return { status: 'Lease Expired', color: 'bg-red-100 text-red-800' };
+    }
+
+    return { status: 'Lease Active', color: 'bg-green-100 text-green-800' };
   };
 
   return (
@@ -179,11 +199,9 @@ const TenantLeasedProperties: React.FC = () => {
                       <span className="line-clamp-1">{lease.listings?.address}</span>
                     </div>
                     <div className="flex items-center gap-2 mb-2">
-                      {isLeaseActive(lease) ? (
-                        <Badge className="bg-green-100 text-green-800 px-3 py-1">Active</Badge>
-                      ) : (
-                        <Badge className="bg-gray-200 text-gray-600 px-3 py-1">Inactive</Badge>
-                      )}
+                      <Badge className={`${determineRentalStatus(lease).color} px-3 py-1`}>
+                        {determineRentalStatus(lease).status}
+                      </Badge>
                       <span className="text-blue-600 font-bold ml-auto">${lease.rent}/month</span>
                     </div>
                     <Button

@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { EmojiPicker } from './EmojiPicker';
 import { toast } from '@/hooks/use-toast';
-import { chatApi, Message as ApiMessage } from '@/api/chat';
 import { useSocket } from '@/context/SocketContext';
 import {
   Tooltip,
@@ -44,6 +43,8 @@ import { useAuth } from '@/context/AuthContext';
 import { getCurrentUserRole } from '@/utils/auth';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { chatApi } from '@/api/chat';
 
 interface ChatWindowProps {
   propertyTitle?: string;
@@ -103,7 +104,7 @@ export function ChatWindow({
   const { user } = useAuth();
   console.log('[ChatWindow] Current user ID:', user?.id);
   const userRole = getCurrentUserRole(user);
-  const { socket, isConnected, joinChat, leaveChat, sendMessage, sendTyping, sendStopTyping } = useSocket();
+  const { socket, isConnected, joinChat, leaveChat, sendMessage, sendTyping, sendStopTyping, markChatAsRead: socketMarkChatAsRead } = useSocket();
   const [chatRoomId, setChatRoomId] = useState<string | undefined>(initialChatRoomId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -117,12 +118,42 @@ export function ChatWindow({
   const [currentLandlordName, setCurrentLandlordName] = useState(() => landlordName || 'Landlord');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   // Typing indicator state
   const [otherUserTyping, setOtherUserTyping] = useState<string | null>(null);
+
+  // Helper function to get sender's name for avatar
+  const getSenderName = (messageSender: 'user' | 'other') => {
+    if (messageSender === 'user') {
+      // Current user (tenant or landlord)
+      return user?.user_metadata?.full_name || 'U';
+    } else {
+      // Other user (landlord if current user is tenant, tenant if current user is landlord)
+      if (userRole === 'tenant') {
+        return landlordName || 'L';
+      } else {
+        return tenantName || 'T';
+      }
+    }
+  };
+
+  // Function to mark chat as read
+  const markChatAsRead = async () => {
+    if (!chatRoomId || !user) return;
+    
+    try {
+      socketMarkChatAsRead({
+        chatId: chatRoomId,
+        userId: user.id,
+        userType: userRole as 'tenant' | 'landlord'
+      });
+    } catch (error) {
+      console.error('Error marking chat as read:', error);
+    }
+  };
 
   // On mount, try to find an existing chat room and fetch messages
   useEffect(() => {
@@ -130,7 +161,7 @@ export function ChatWindow({
       // Only create a new chat room if we don't have a chatRoomId AND we have all required IDs
       if (!chatRoomId && user && landlordId && propertyId) {
         const isTenant = userRole === 'tenant';
-        const tenant_id = isTenant ? user.id : undefined;
+        const tenant_id = isTenant ? user.id : landlordId;
         const landlord_id = isTenant ? landlordId : user.id;
         const tenant_name = isTenant
           ? user.user_metadata?.full_name
@@ -153,12 +184,19 @@ export function ChatWindow({
             propertyTitle,
             landlordName
           );
-          if (chatRoom && chatRoom.id) {
-            setChatRoomId(chatRoom.id);
-            await fetchMessages(chatRoom.id);
+          if (chatRoom && chatRoom.data && chatRoom.data.id) {
+            console.log('[ChatWindow] Setting chat room ID:', chatRoom.data.id);
+            setChatRoomId(chatRoom.data.id);
+          } else {
+            console.error('[ChatWindow] Invalid chat room response:', chatRoom);
           }
         } catch (e) {
-          console.log('[ChatWindow] Could not create chat room:', e);
+          console.error('[ChatWindow] Could not create chat room:', e);
+          console.error('[ChatWindow] Error details:', {
+            message: e.message,
+            response: e.response?.data,
+            status: e.response?.status
+          });
           // Don't create chat room automatically - let user send first message
         }
       }
@@ -171,20 +209,88 @@ export function ChatWindow({
   useEffect(() => {
     if (chatRoomId && isConnected) {
       joinChat(chatRoomId);
-      fetchMessages(chatRoomId);
+      
+      // Mark chat as read when joining
+      markChatAsRead();
       
       return () => {
         leaveChat(chatRoomId);
       };
     }
-  }, [chatRoomId, isConnected, joinChat, leaveChat]);
+  }, [chatRoomId, isConnected, joinChat, leaveChat, markChatAsRead]);
 
   // WebSocket event listeners
   useEffect(() => {
     if (!socket) return;
 
+    // Listen for initial chat messages when joining
+    socket.on('chat-messages', (data: { chatId: string; messages: any[] }) => {
+      if (data.chatId === chatRoomId) {
+        const formattedMessages = data.messages.map((msg: any) => {
+          // Parse content to determine if it's a file/image
+          let fileInfo: { name: string, url: string, type?: string } | null = null;
+          let isImageFile = false;
+          try {
+            const parsed = JSON.parse(msg.content);
+            if (parsed && typeof parsed === 'object' && parsed.url && parsed.name) {
+              fileInfo = parsed;
+              isImageFile = parsed.type?.startsWith('image/') || false;
+            }
+          } catch {}
+          
+          // Determine message type
+          let messageType: 'text' | 'image' | 'file' = 'text';
+          if (isImageFile) {
+            messageType = 'image';
+          } else if (fileInfo) {
+            messageType = 'file';
+          }
+          
+          // Reconstruct replyTo if reply_to_id is present
+          let replyTo = undefined;
+          if (msg.reply_to_id) {
+            const referenced = data.messages.find(m => m.id === msg.reply_to_id);
+            if (referenced) {
+              replyTo = { id: referenced.id, content: referenced.content };
+            }
+          }
+          
+          return {
+            id: msg.id,
+            content: msg.content,
+            sender: (msg.sender_id === user?.id ? 'user' : 'other') as 'user' | 'other',
+            timestamp: new Date(msg.created_at),
+            status: 'sent' as const,
+            type: messageType,
+            imageUrl: isImageFile ? msg.content : undefined,
+            reactions: {},
+            replyTo
+          };
+        });
+        
+        setMessages(formattedMessages);
+      }
+    });
+
+    // Listen for chat messages error
+    socket.on('chat-messages-error', (data: { chatId: string; error: string }) => {
+      if (data.chatId === chatRoomId) {
+        toast({
+          title: "Error Loading Messages",
+          description: data.error,
+          variant: "destructive",
+        });
+      }
+    });
+
     // Listen for new messages
     socket.on('new-message', (messageData: any) => {
+      console.log('🔔 ChatWindow received new-message:', messageData);
+      // Mark chat as read if the message is from the other user
+      if (messageData.sender_id !== user?.id) {
+        markChatAsRead();
+      }
+      
       setMessages(prev => {
         // Remove any optimistic message with same type, sender, and status 'sending'
         const filtered = prev.filter(
@@ -266,13 +372,42 @@ export function ChatWindow({
       }
     });
 
+    // Listen for message sent confirmation
+    socket.on('message-sent', (data: { tempId: string; messageId: string }) => {
+      setMessages(prev => prev.map(m => 
+        m.id === data.tempId 
+          ? { ...m, id: data.messageId, status: 'sent' }
+          : m
+      ));
+    });
+
+    // Listen for message errors
+    socket.on('message-error', (data: { error: string; tempId?: string }) => {
+      if (data.tempId) {
+        setMessages(prev => prev.map(m => 
+          m.id === data.tempId 
+            ? { ...m, status: 'error' }
+            : m
+        ));
+      }
+      toast({
+        title: "Error Sending Message",
+        description: data.error,
+        variant: "destructive",
+      });
+    });
+
     return () => {
+      socket.off('chat-messages');
+      socket.off('chat-messages-error');
       socket.off('new-message');
       socket.off('user-typing');
       socket.off('user-stop-typing');
       socket.off('chat-deleted');
+      socket.off('message-sent');
+      socket.off('message-error');
     };
-  }, [socket, user, chatRoomId]);
+  }, [socket, user, chatRoomId, markChatAsRead]);
 
   // Listen for typing events from the socket
   useEffect(() => {
@@ -296,49 +431,7 @@ export function ChatWindow({
     };
   }, [socket, chatRoomId, user?.id]);
 
-  const fetchMessages = async (roomId: string) => {
-    try {
-      setIsLoading(true);
-      const apiMessages = await chatApi.getMessages(roomId);
-      // First, create a map of messages by id
-      const msgMap: Record<string, any> = {};
-      apiMessages.forEach((msg: any) => { msgMap[msg.id] = msg; });
-      // Then, format messages and reconstruct replyTo
-      const formattedMessages = apiMessages.map((msg: any) => {
-        // Determine if this is an image message (base64 data URL)
-        const isImageMessage = msg.content.startsWith('data:image/');
-        const messageType = isImageMessage ? 'image' : 'text';
-        let replyTo: any = undefined;
-        if (msg.reply_to_id && msgMap[msg.reply_to_id]) {
-          replyTo = {
-            id: msgMap[msg.reply_to_id].id,
-            content: msgMap[msg.reply_to_id].content
-          };
-        }
-        return {
-          id: msg.id,
-          content: isImageMessage ? `📷 Image` : msg.content,
-          sender: msg.sender_id === user?.id ? 'user' : 'other',
-          timestamp: new Date(msg.created_at),
-          status: 'sent',
-          type: messageType,
-          imageUrl: isImageMessage ? msg.content : undefined,
-          reactions: {},
-          replyTo
-        };
-      });
-      setMessages(formattedMessages);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load messages",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   const handleSendMessage = async () => {
     console.log('Send button clicked', { chatRoomId, newMessage, user });
@@ -368,37 +461,15 @@ export function ChatWindow({
     const replyToId = replyTo && isRealUuid(replyTo.id) ? replyTo.id : null;
 
     try {
-      // Send via WebSocket first for real-time delivery
+      // Send via WebSocket only
       sendMessage({
         chatId: chatRoomId,
         senderId: user.id,
         content,
-        senderType: userRole as 'tenant' | 'landlord'
-      });
-
-      // Also send via API to persist to database
-      const sentMessage = await chatApi.sendMessage(
-        chatRoomId,
-        user.id,
-        content,
-        userRole,
+        senderType: userRole as 'tenant' | 'landlord',
+        tempId: tempMessage.id,
         replyToId
-      );
-
-      // Update the temporary message with the real one
-      setMessages(prev => prev.map(m => {
-        if (m.id === tempMessage.id) {
-          let replyTo = undefined;
-          if (replyToId) {
-            const referenced = prev.find(msg => msg.id === replyToId);
-            if (referenced) {
-              replyTo = { id: referenced.id, content: referenced.content };
-            }
-          }
-          return { ...m, id: sentMessage.id, status: 'sent', replyTo };
-        }
-        return m;
-      }));
+      });
     } catch (error: any) {
       setMessages(prev => prev.map(m => 
         m.id === tempMessage.id 
@@ -614,23 +685,20 @@ export function ChatWindow({
       return;
     }
 
-    // Send the message with file info as JSON
+    // Send the message with file info as JSON via WebSocket
     if (chatRoomId && user) {
       const userRole = getCurrentUserRole(user);
       const senderType = userRole === 'tenant' ? 'tenant' : 'landlord';
       const fileInfo = JSON.stringify({ name: file.name, url: publicUrl, type: file.type });
+      
       try {
-        await chatApi.sendMessage(
-          chatRoomId,
-          user.id,
-          fileInfo,
-          senderType
-        );
-        setMessages(prev => prev.map(msg =>
-          msg.id === optimisticMessage.id
-            ? { ...msg, status: 'sent', content: fileInfo, imageUrl: publicUrl }
-            : msg
-        ));
+        sendMessage({
+          chatId: chatRoomId,
+          senderId: user.id,
+          content: fileInfo,
+          senderType: senderType as 'tenant' | 'landlord',
+          tempId: optimisticMessage.id
+        });
       } catch (error) {
         setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
         toast({
@@ -698,9 +766,7 @@ export function ChatWindow({
             <div className="flex items-center gap-2 mt-1">
               <Avatar className="h-6 w-6">
                 <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
-                  {userRole === 'landlord'
-                    ? (tenantName ? tenantName.charAt(0) : 'T')
-                    : (landlordName ? landlordName.charAt(0) : 'L')}
+                  {getSenderName('other').charAt(0).toUpperCase()}
                 </div>
               </Avatar>
               <span className="text-xs text-gray-600 font-semibold">
@@ -925,7 +991,7 @@ export function ChatWindow({
                         </div>
                         <Avatar className="h-6 w-6">
                           <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
-                            U
+                            {getSenderName('user').charAt(0).toUpperCase()}
                           </div>
                         </Avatar>
                       </>
@@ -933,7 +999,7 @@ export function ChatWindow({
                       <>
                         <Avatar className="h-6 w-6">
                           <div className="h-full w-full bg-primary/10 flex items-center justify-center text-xs">
-                            {currentLandlordName.charAt(0)}
+                            {getSenderName('other').charAt(0).toUpperCase()}
                           </div>
                         </Avatar>
                         {/* Message bubble */}

@@ -9,18 +9,24 @@ import { sampleProperties, Property } from '@/data/sampleProperties';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabaseClient';
-import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { apiFetch, getApiBaseUrl, getNotificationSummary } from '@/utils/api';
+import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
+
 
 const LandlordDashboard = () => {
   const [properties, setProperties] = useState<Property[]>(sampleProperties);
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut, user } = useAuth();
+  const { toast } = useToast();
   const [pendingMaintenanceCount, setPendingMaintenanceCount] = useState(0);
   const [showBanner, setShowBanner] = useState(false);
+
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [newlySignedLeases, setNewlySignedLeases] = useState<any[]>([]);
   const [deleteListing, setDeleteListing] = useState(null);
   const [pendingViewingCount, setPendingViewingCount] = useState(0);
   const [showViewingBanner, setShowViewingBanner] = useState(false);
@@ -30,6 +36,8 @@ const LandlordDashboard = () => {
   const [proposeRequestId, setProposeRequestId] = useState(null);
   const [proposedDate, setProposedDate] = useState('');
   const [proposedTime, setProposedTime] = useState('');
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+
 
   const userId = user?.id || '';
   const [profile, setProfile] = useState({
@@ -180,21 +188,74 @@ const LandlordDashboard = () => {
   }, [userId, deleteListing]);
 
   useEffect(() => {
-    async function fetchPendingMaintenance() {
+    async function fetchAllNotifications() {
       if (!userId) return;
-      const lastSeen = localStorage.getItem('maintenance_last_seen') || '0';
-      const { data, error } = await supabase
-        .from('maintenance_requests')
-        .select('createdAt', { count: 'exact' })
-        .eq('landlordId', userId)
-        .eq('status', 'Pending');
-      if (!error && data) {
-        const newRequests = data.filter((r) => new Date(r.createdAt).getTime() > Number(lastSeen));
-        setPendingMaintenanceCount(newRequests.length);
-        setShowBanner(newRequests.length > 0);
+      
+      setNotificationsLoading(true);
+      try {
+        console.log('Fetching notification summary for landlord:', userId);
+        const response = await getNotificationSummary(userId, 'landlord');
+        
+        if (response?.data) {
+          const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+          
+          // Update all notification states at once
+          setUnreadMessageCount(unreadMessages || 0);
+          setPendingMaintenanceCount(pendingMaintenance || 0);
+          setNewlySignedLeases(newLeases || []);
+          setPendingViewingCount(pendingViewings || 0);
+          
+          // Show banner if there are pending maintenance requests
+          setShowBanner((pendingMaintenance || 0) > 0);
+          
+          console.log('Notification summary loaded:', response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching notification summary:', error);
+        // Set defaults on error
+        setUnreadMessageCount(0);
+        setPendingMaintenanceCount(0);
+        setNewlySignedLeases([]);
+        setPendingViewingCount(0);
+        setShowBanner(false);
+      } finally {
+        setNotificationsLoading(false);
       }
     }
-    fetchPendingMaintenance();
+
+    fetchAllNotifications();
+  }, [userId]);
+
+
+
+  // Refresh data when component comes into focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (userId) {
+        async function refreshNotifications() {
+          try {
+            console.log('Refreshing notifications on focus for landlord:', userId);
+            const response = await getNotificationSummary(userId, 'landlord');
+            
+            if (response?.data) {
+              const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+              
+              setUnreadMessageCount(unreadMessages || 0);
+              setPendingMaintenanceCount(pendingMaintenance || 0);
+              setNewlySignedLeases(newLeases || []);
+              setPendingViewingCount(pendingViewings || 0);
+              setShowBanner((pendingMaintenance || 0) > 0);
+            }
+          } catch (error) {
+            console.error('Error refreshing notifications:', error);
+          }
+        }
+        refreshNotifications();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [userId]);
 
   useEffect(() => {
@@ -248,6 +309,57 @@ const LandlordDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 pb-24">
+      {/* Newly Signed Leases Banner */}
+      {newlySignedLeases.length > 0 && (
+        <div className="bg-green-50 border-b border-green-200 p-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl">🎉</span>
+                <div>
+                  <h3 className="font-semibold text-green-800">Congratulations!</h3>
+                  <p className="text-sm text-green-700">
+                    {newlySignedLeases.length === 1 ? (
+                      <>
+                        {newlySignedLeases[0].tenant_profiles?.full_name || newlySignedLeases[0].tenant_name || newlySignedLeases[0].tenantName || 'Tenant'} signed lease for {newlySignedLeases[0].listings?.title || newlySignedLeases[0].property_name || newlySignedLeases[0].propertyName || 'Property'}!
+                      </>
+                    ) : (
+                      `${newlySignedLeases.length} new lease${newlySignedLeases.length === 1 ? ' has' : 's have'} been signed!`
+                    )}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-green-600 hover:text-green-800 hover:bg-green-100"
+                onClick={async () => {
+                  // Mark all unseen leases as seen
+                  if (newlySignedLeases.length > 0) {
+                    try {
+                      const leaseIds = newlySignedLeases.map(lease => lease.id);
+                      await fetch(`${getApiBaseUrl()}/api/leases/mark-seen`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: JSON.stringify({ leaseIds })
+                      });
+                    } catch (err) {
+                      console.error('Error marking leases as seen:', err);
+                    }
+                  }
+                  setNewlySignedLeases([]);
+                }}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -535,11 +647,20 @@ const LandlordDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2"
+            className="flex-col h-auto py-2 relative"
             onClick={() => navigate('/landlord/matches')}
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
+            {notificationsLoading ? (
+              <span className="absolute -top-1 -right-1 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                <div className="w-2 h-2 bg-current rounded-full animate-ping"></div>
+              </span>
+            ) : unreadMessageCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
+                {unreadMessageCount}
+              </span>
+            )}
           </Button>
           <Button 
             variant="ghost" 
@@ -549,7 +670,11 @@ const LandlordDashboard = () => {
           >
             <Wrench className="w-5 h-5 mb-1" />
             <span className="text-xs">Maintenance</span>
-            {pendingMaintenanceCount > 0 && (
+            {notificationsLoading ? (
+              <span className="absolute top-0 right-0 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5">
+                <div className="w-2 h-2 bg-current rounded-full animate-ping"></div>
+              </span>
+            ) : pendingMaintenanceCount > 0 && (
               <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
                 {pendingMaintenanceCount}
               </span>

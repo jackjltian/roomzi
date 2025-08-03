@@ -32,13 +32,10 @@ export const chatApi = {
   ) => {
     try {
       console.log('Creating chat room:', { tenantId, landlordId, propertyId, tenantName, propertyName, landlordName });
-      const response = await axios.post(`${API_URL}/chat/rooms`, {
-        tenantId,
-        landlordId,
-        propertyId,
-        tenantName,
-        propertyName,
-        landlordName
+      const response = await axios.post(`${API_URL}/chats`, {
+        tenant_id: tenantId,
+        landlord_id: landlordId,
+        property_id: propertyId
       });
       console.log('Chat room created:', response.data);
       return response.data;
@@ -52,7 +49,7 @@ export const chatApi = {
   getChatRooms: async (userId: string) => {
     try {
       console.log('Fetching chat rooms for user:', userId);
-      const response = await axios.get(`${API_URL}/chat/rooms/${userId}`);
+      const response = await axios.get(`${API_URL}/chats/user/${userId}/tenant`);
       console.log('Chat rooms fetched:', response.data);
       return response.data;
     } catch (error) {
@@ -65,7 +62,7 @@ export const chatApi = {
   getMessages: async (roomId: string) => {
     try {
       console.log('Fetching messages for room:', roomId);
-      const response = await axios.get(`${API_URL}/chat/rooms/${roomId}/messages`);
+      const response = await axios.get(`${API_URL}/chats/${roomId}/messages`);
       console.log('Messages fetched:', response.data);
       return response.data;
     } catch (error) {
@@ -84,7 +81,7 @@ export const chatApi = {
   ) => {
     try {
       console.log('Sending message:', { chatId, senderId, content, senderType, replyToId });
-      const response = await axios.post(`${API_URL}/chat/messages`, {
+      const response = await axios.post(`${API_URL}/chats/messages`, {
         chat_id: chatId,
         sender_id: senderId,
         content,
@@ -109,13 +106,10 @@ export const chatApi = {
     landlordName?: string
   ) => {
     try {
-      const response = await axios.post(`${API_URL}/chat/rooms/find-or-create`, {
-        tenantId,
-        landlordId,
-        propertyId,
-        tenantName,
-        propertyName,
-        landlordName
+      const response = await axios.post(`${API_URL}/chats`, {
+        tenant_id: tenantId,
+        landlord_id: landlordId,
+        property_id: propertyId
       });
       return response.data;
     } catch (error) {
@@ -138,7 +132,7 @@ export const chatApi = {
   // Delete a chat room (landlord only)
   deleteChatRoom: async (roomId: string, landlordId: string) => {
     try {
-      const response = await axios.delete(`${API_URL}/chat/rooms/${roomId}`, {
+      const response = await axios.delete(`${API_URL}/chats/${roomId}`, {
         data: { landlordId }
       });
       return response.data;

@@ -7,7 +7,7 @@ import { successResponse } from "./utils/response.js";
 import { supabase, initializeStorageBuckets } from "./config/supabase.js";
 import { prisma } from "./config/prisma.js";
 import apiRoutes from "./routes/index.js";
-import chatRoutes from "./routes/chat.js";
+import chatRoutes from "./routes/chatRoutes.js";
 import { initializeSocket } from "./config/socket.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import multer from 'multer';

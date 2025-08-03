@@ -6,6 +6,7 @@ import chatRoutes from "./chatRoutes.js";
 import paymentRoutes from "./paymentRoutes.js";
 import viewingRoutes from "./viewingRoutes.js";
 import leaseRoutes from "./leaseRoutes.js";
+import notificationRoutes from "./notificationRoutes.js";
 import { createListing, getListings } from "../controllers/landlordController.js";
 
 const router = express.Router();
@@ -30,6 +31,7 @@ router.use("/listings", listingRoutes);
 router.use("/chats", chatRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/viewings", viewingRoutes);
+router.use("/notifications", notificationRoutes);
 
 router.use("/leases", leaseRoutes);
 router.use("/landlord", landlordRouter);

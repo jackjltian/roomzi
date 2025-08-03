@@ -10,8 +10,7 @@ import Map from '@/components/Map';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/utils/api';
-import { getApiBaseUrl, getLeasesForTenant, tenantApi } from '@/utils/api';
-import UpcomingPaymentBanner from '@/components/UpcomingPaymentBanner';
+import { getApiBaseUrl, getLeasesForTenant, getNotificationSummary, tenantApi } from '@/utils/api';
 import { calculateDistance, parseCoordinates, geocodeAddress } from '@/lib/utils';
 
 // Helper to safely parse JSON fields
@@ -52,9 +51,13 @@ const TenantDashboard = () => {
   const [viewings, setViewings] = useState([]);
   const [loadingViewings, setLoadingViewings] = useState(true);
 
-  // Add mock lease state
-  const [hasNewLease, setHasNewLease] = useState(false); // now real data
+  // Lease notification state for matches tab
+  const [hasNewLease, setHasNewLease] = useState(false);
   const [leaseId, setLeaseId] = useState<string | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [lastNotificationFetch, setLastNotificationFetch] = useState(0);
+  const [notificationRetryCount, setNotificationRetryCount] = useState(0);
 
   // Add notification settings state
   const [viewingRequestNotifications, setViewingRequestNotifications] = useState(true);
@@ -109,10 +112,33 @@ const TenantDashboard = () => {
   useEffect(() => {
     const handleFocus = () => {
       fetchProfile();
+      // Refresh all notifications when component comes into focus
+      if (user?.id) {
+        // Debounce: only fetch if it's been more than 2 seconds since last fetch
+        const now = Date.now();
+        if (now - lastNotificationFetch < 2000) {
+          console.log('Skipping notification refresh - too soon since last fetch');
+          return;
+        }
+        
+        // Add a timeout to prevent infinite loading state
+        const timeoutId = setTimeout(() => {
+          setNotificationsLoading(false);
+          // Retry the notification fetch after timeout if we haven't exceeded retry limit
+          if (notificationRetryCount < 2) {
+            console.log('Retrying notification fetch after timeout');
+            setTimeout(() => fetchNotificationsWithRetry(true), 1000);
+          }
+        }, 2000); // 2 second timeout
+
+        fetchNotificationsWithRetry().finally(() => {
+          clearTimeout(timeoutId);
+        });
+      }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+  }, [user?.id, lastNotificationFetch, notificationRetryCount]);
 
   useEffect(() => {
     const handleProfileUpdated = (e: any) => {
@@ -156,28 +182,53 @@ const TenantDashboard = () => {
     fetchViewings();
   }, [user]);
 
-  useEffect(() => {
-    // Fetch leases for the current tenant
-    const fetchLeases = async () => {
-      if (!user?.id) return;
-      try {
-        const response = await getLeasesForTenant(user.id);
-        if (response.success && Array.isArray(response.data)) {
-          const unsignedLease = response.data.find((lease: any) => lease.signed === false);
-          if (unsignedLease) {
-            setHasNewLease(true);
-            setLeaseId(unsignedLease.id);
-          } else {
-            setHasNewLease(false);
-            setLeaseId(null);
-          }
-        }
-      } catch (err) {
-        setHasNewLease(false);
-        setLeaseId(null);
+  // Function to fetch notifications with retry logic
+  const fetchNotificationsWithRetry = async (isRetry = false) => {
+    if (!user?.id) return;
+    
+    if (isRetry) {
+      setNotificationRetryCount(prev => prev + 1);
+    }
+    
+    setNotificationsLoading(true);
+    setLastNotificationFetch(Date.now());
+    
+    try {
+      console.log(`Fetching notification summary for tenant: ${user.id}${isRetry ? ' (retry)' : ''}`);
+      const response = await getNotificationSummary(user.id, 'tenant');
+      
+      if (response?.data) {
+        const { unreadMessages, pendingMaintenance, newLeases, pendingViewings } = response.data;
+        
+        setUnreadMessageCount(unreadMessages || 0);
+        
+        // Check for unsigned leases
+        const unsignedLease = newLeases?.find((lease: any) => lease.signed === false);
+        setHasNewLease(!!unsignedLease);
+        setLeaseId(unsignedLease?.id || null);
+        
+        console.log('Notification summary loaded for tenant:', response.data);
+        setNotificationRetryCount(0); // Reset retry count on success
       }
-    };
-    fetchLeases();
+    } catch (error) {
+      console.error('Error fetching notification summary:', error);
+      setUnreadMessageCount(0);
+      setHasNewLease(false);
+      setLeaseId(null);
+      
+      // Auto-retry on error if we haven't exceeded retry limit
+      if (!isRetry && notificationRetryCount < 2) {
+        console.log('Auto-retrying notification fetch due to error');
+        setTimeout(() => fetchNotificationsWithRetry(true), 1000);
+      }
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Check for all notifications to show notification badges
+    fetchNotificationsWithRetry();
   }, [user]);
 
   const fetchProperties = async () => {
@@ -446,19 +497,6 @@ const TenantDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      {/* Lease Notification Banner */}
-      {hasNewLease && leaseId && (
-        <div
-          className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 cursor-pointer flex items-center justify-between"
-          onClick={() => navigate(`/tenant/lease/${leaseId}`)}
-        >
-          <span>📄 You have a new lease to review and sign!</span>
-          <button
-            className="ml-4 text-yellow-700 underline text-sm"
-            onClick={e => { e.stopPropagation(); setHasNewLease(false); }}
-          >Dismiss</button>
-        </div>
-      )}
       {/* Enhanced Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -494,10 +532,7 @@ const TenantDashboard = () => {
           </div>
         </div>
 
-        {/* Upcoming Payment Banner */}
-        <UpcomingPaymentBanner amount={2500} dueDate="July 1, 2024" />
-
-                {/* Viewing Requests Section - Only show if notifications are enabled */}
+        {/* Viewing Requests Section - Only show if notifications are enabled */}
         {viewingRequestNotifications && (
           <Card className="p-6 mb-6 shadow-lg bg-white/80 backdrop-blur-sm border-0">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 flex items-center">
@@ -748,11 +783,41 @@ const TenantDashboard = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            className="flex-col h-auto py-2"
+            className="flex-col h-auto py-2 hover:bg-blue-50 relative"
             onClick={() => navigate('/tenant/matches')}
           >
             <MessageCircle className="w-5 h-5 mb-1" />
             <span className="text-xs">Matches</span>
+            {notificationsLoading ? (
+              <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 min-w-[18px] text-center animate-pulse">
+                <div className="w-2 h-2 bg-current rounded-full animate-spin"></div>
+              </span>
+            ) : (
+              <>
+                {hasNewLease && (
+                  <span className="absolute -top-1 -left-1 bg-yellow-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse">
+                    📄
+                  </span>
+                )}
+                {unreadMessageCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 animate-pulse min-w-[18px] text-center">
+                    {unreadMessageCount}
+                  </span>
+                )}
+                {notificationRetryCount > 0 && (
+                  <span 
+                    className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5 cursor-pointer hover:bg-orange-600 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetchNotificationsWithRetry(true);
+                    }}
+                    title="Click to retry loading notifications"
+                  >
+                    🔄
+                  </span>
+                )}
+              </>
+            )}
           </Button>
           <Button 
             variant="ghost" 

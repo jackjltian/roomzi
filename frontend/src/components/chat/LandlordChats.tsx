@@ -29,6 +29,7 @@ interface Chat {
 export function LandlordChats() {
   const { user } = useAuth();
   const userRole = getCurrentUserRole(user);
+  const { markChatAsRead } = useSocket();
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(false);
@@ -147,15 +148,26 @@ export function LandlordChats() {
     return matchesSearch;
   });
 
-  const handleChatSelect = (chat: Chat) => {
-    // Mark this chat as read by updating the chats state
-    setChats(prevChats => 
-      prevChats.map(c => 
-        c.id === chat.id 
-          ? { ...c, unread: false }
-          : c
-      )
-    );
+  const handleChatSelect = async (chat: Chat) => {
+    // Mark this chat as read using WebSocket
+    try {
+      markChatAsRead({
+        chatId: chat.id,
+        userId: user?.id || '',
+        userType: 'landlord'
+      });
+      
+      // Update local state to reflect the read status
+      setChats(prevChats => 
+        prevChats.map(c => 
+          c.id === chat.id 
+            ? { ...c, unread: false }
+            : c
+        )
+      );
+    } catch (error) {
+      console.error('Error marking chat as read:', error);
+    }
     
     setSelectedChat(chat);
   };
