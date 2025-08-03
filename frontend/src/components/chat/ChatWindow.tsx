@@ -44,6 +44,7 @@ import { getCurrentUserRole } from '@/utils/auth';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { chatApi } from '@/api/chat';
 
 interface ChatWindowProps {
   propertyTitle?: string;
@@ -186,7 +187,6 @@ export function ChatWindow({
           if (chatRoom && chatRoom.data && chatRoom.data.id) {
             console.log('[ChatWindow] Setting chat room ID:', chatRoom.data.id);
             setChatRoomId(chatRoom.data.id);
-            await fetchMessages(chatRoom.data.id);
           } else {
             console.error('[ChatWindow] Invalid chat room response:', chatRoom);
           }
