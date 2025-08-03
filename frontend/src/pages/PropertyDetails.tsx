@@ -297,6 +297,7 @@ const PropertyDetails = () => {
                   onPropertyClick={() => {}}
                   mapboxToken={mapboxToken}
                   onTokenSubmit={setMapboxToken}
+                  showUserLocation={true}
                 />
               </div>
             </Card>

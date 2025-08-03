@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma.js";
 import { successResponse, errorResponse } from "../utils/response.js";
+import { geocodeAddress, getFallbackCoordinates } from "../utils/geocoding.js";
 import { supabase } from "../config/supabase.js";
 
 // Helper function to convert BigInt to string for JSON serialization
@@ -245,6 +246,20 @@ export const createListing = async (req, res) => {
       console.log("Created new landlord profile:", landlordProfile.id);
     }
 
+    // Generate coordinates from address
+    let coordinates = null;
+    try {
+      coordinates = await geocodeAddress(address, city, state, zipCode);
+      if (!coordinates) {
+        // Use fallback coordinates if geocoding fails
+        coordinates = getFallbackCoordinates(city, state);
+      }
+    } catch (error) {
+      console.error("Error generating coordinates:", error);
+      // Use fallback coordinates
+      coordinates = getFallbackCoordinates(city, state);
+    }
+
     const listing = await prisma.listings.create({
       data: {
         title,
@@ -264,6 +279,7 @@ export const createListing = async (req, res) => {
         house_rules: houseRules,
         images: images ? JSON.stringify(images) : null,
         landlord_id: landlordId,
+        coordinates,
         available: true,
       },
     });

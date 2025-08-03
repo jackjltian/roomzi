@@ -349,6 +349,7 @@ const TenantDashboard = () => {
               onPropertyClick={handlePropertyClick}
               mapboxToken={mapboxToken}
               onTokenSubmit={setMapboxToken}
+              showUserLocation={true}
             />
           </Card>
         ) : loading ? (

@@ -155,6 +155,13 @@ const CreateListing = () => {
 
       const result = await response.json();
       console.log('Listing created successfully:', result);
+      
+      // Log coordinates if available
+      if (result.listing && result.listing.coordinates) {
+        console.log('📍 Generated coordinates:', result.listing.coordinates);
+      } else {
+        console.log('⚠️ No coordinates generated for the listing');
+      }
 
       navigate('/landlord');
     } catch (error) {
@@ -219,6 +226,11 @@ const CreateListing = () => {
           {/* Location */}
           <Card className="p-6">
             <h2 className="text-xl font-semibold mb-6">Location</h2>
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-700">
+                📍 <strong>Note:</strong> Coordinates will be automatically generated from your address to display the property on the map.
+              </p>
+            </div>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
                 <Label htmlFor="address">Street Address</Label>
