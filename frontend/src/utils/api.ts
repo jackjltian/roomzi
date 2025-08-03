@@ -57,10 +57,16 @@ export interface ProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+  viewingRequestNotifications?: boolean;
+  rentReminderDays?: number;
+  preferredHouseTypes?: string[];
+  preferredRentMin?: number;
+  preferredRentMax?: number;
+  preferredDistance?: number;
 }
 
 export interface LandlordProfileData extends ProfileData {
-  documents?: string[];
+  documents?: Array<{ path: string; displayName: string }>;
 }
 
 export interface ApiResponse<T = any> {
@@ -175,26 +181,42 @@ export const cleanupCache = () => {
 setInterval(cleanupCache, 300000);
 
 // Profile creation helper
-const createProfileData = (userId: string, email: string): ProfileData => {
+const createProfileData = (userId: string, email: string, userMetadata?: any): ProfileData => {
+  // Use actual user data from auth if available
+  const fullName = userMetadata?.full_name || 
+                   userMetadata?.name || 
+                   userMetadata?.display_name || 
+                   email.split('@')[0];
+  
   return {
     id: userId,
-    full_name: email.split('@')[0],
+    full_name: fullName,
     email: email,
-    phone: null,
-    image_url: null,
-    address: null,
+    phone: userMetadata?.phone || null,
+    image_url: userMetadata?.avatar_url || userMetadata?.picture || null,
+    address: userMetadata?.address || null,
+    viewingRequestNotifications: true,
+    rentReminderDays: 3,
   };
 };
 
 // Profile creation helper for landlords
-const createLandlordProfileData = (userId: string, email: string): LandlordProfileData => {
+const createLandlordProfileData = (userId: string, email: string, userMetadata?: any): LandlordProfileData => {
+  // Use actual user data from auth if available
+  const fullName = userMetadata?.full_name || 
+                   userMetadata?.name || 
+                   userMetadata?.display_name || 
+                   email.split('@')[0];
+  
   return {
     id: userId,
-    full_name: email.split('@')[0],
+    full_name: fullName,
     email: email,
-    phone: null,
-    image_url: null,
-    address: null,
+    phone: userMetadata?.phone || null,
+    image_url: userMetadata?.avatar_url || userMetadata?.picture || null,
+    address: userMetadata?.address || null,
+    viewingRequestNotifications: true,
+    rentReminderDays: 3,
     documents: [],
   };
 };
@@ -255,10 +277,10 @@ export const profileSyncUtils = {
 
 // Tenant API Functions
 export const tenantApi = {
-  create: async (userId: string, email: string): Promise<ApiResponse> => {
+  create: async (userId: string, email: string, userMetadata?: any): Promise<ApiResponse> => {
     try {
       const landlordData = await profileSyncUtils.getOppositeProfileData(userId, 'tenant');
-      const profileData = createProfileData(userId, email);
+      const profileData = createProfileData(userId, email, userMetadata);
 
       if (landlordData) {
         Object.assign(profileData, {
@@ -309,6 +331,7 @@ export const tenantApi = {
   update: async (tenantId: string, profileData: Partial<ProfileData>, skipSync = false): Promise<ApiResponse> => {
     try {
       const url = `${getApiBaseUrl()}/api/tenants/${tenantId}`;
+      console.log('Updating tenant profile:', { tenantId, profileData });
       const response = await apiFetch(url, {
         method: 'PUT',
         body: JSON.stringify(profileData),
@@ -337,14 +360,48 @@ export const tenantApi = {
       throw error;
     }
   },
+
+  getPreferences: async (tenantId: string): Promise<ApiResponse> => {
+    try {
+      const url = `${getApiBaseUrl()}/api/tenants/${tenantId}/preferences`;
+      const response = await cachedApiFetch(url, {}, 300000);
+      return { success: true, data: response };
+    } catch (error) {
+      console.error('Error fetching tenant preferences:', error);
+      throw error;
+    }
+  },
+
+  updatePreferences: async (tenantId: string, preferences: {
+    preferredHouseTypes?: string[];
+    preferredRentMin?: number;
+    preferredRentMax?: number;
+    preferredDistance?: number;
+  }): Promise<ApiResponse> => {
+    try {
+      const url = `${getApiBaseUrl()}/api/tenants/${tenantId}/preferences`;
+      const response = await apiFetch(url, {
+        method: 'PUT',
+        body: JSON.stringify(preferences),
+      });
+
+      // Clear cache for this tenant's preferences
+      cache.delete(`${getApiBaseUrl()}/api/tenants/${tenantId}/preferences-{}`);
+
+      return { success: true, data: response };
+    } catch (error) {
+      console.error('Error updating tenant preferences:', error);
+      throw error;
+    }
+  },
 };
 
 // Landlord API Functions
 export const landlordApi = {
-  create: async (userId: string, email: string): Promise<ApiResponse> => {
+  create: async (userId: string, email: string, userMetadata?: any): Promise<ApiResponse> => {
     try {
       const tenantData = await profileSyncUtils.getOppositeProfileData(userId, 'landlord');
-      const profileData = createLandlordProfileData(userId, email);
+      const profileData = createLandlordProfileData(userId, email, userMetadata);
 
       if (tenantData) {
         Object.assign(profileData, {
@@ -428,11 +485,11 @@ export const landlordApi = {
 
 // Profile utility functions
 export const profileUtils = {
-  createForRole: async (role: 'tenant' | 'landlord', userId: string, email: string): Promise<ApiResponse> => {
+  createForRole: async (role: 'tenant' | 'landlord', userId: string, email: string, userMetadata?: any): Promise<ApiResponse> => {
     if (role === 'tenant') {
-      return tenantApi.create(userId, email);
+      return tenantApi.create(userId, email, userMetadata);
     } else if (role === 'landlord') {
-      return landlordApi.create(userId, email);
+      return landlordApi.create(userId, email, userMetadata);
     } else {
       throw new Error(`Invalid role: ${role}`);
     }
@@ -594,4 +651,52 @@ const { data: buckets, error: bucketsError } = await supabase.storage.listBucket
       console.error('Error deleting document:', error);
     }
   },
+};
+
+// Lease API
+export const getLeasesForTenant = async (tenantId: string) => {
+  const url = `${getApiBaseUrl()}/api/leases/tenant/${tenantId}`;
+  return apiFetch(url);
+};
+
+export const getLeaseById = async (leaseId: string) => {
+  const url = `${getApiBaseUrl()}/api/leases/${leaseId}`;
+  return apiFetch(url);
+};
+
+export const uploadSignedLease = async (leaseId: string, file: File) => {
+  const url = `${getApiBaseUrl()}/api/leases/${leaseId}/upload`;
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.message || 'Failed to upload signed lease');
+  }
+  return response.json();
+};
+
+export const getListingById = async (listingId: string) => {
+  const url = `${getApiBaseUrl()}/api/listings/${listingId}`;
+  return apiFetch(url);
+};
+
+// Fetch lease history for a tenant and a property
+export const getLeaseHistoryForTenantAndListing = async (tenantId: string, listingId: string | number) => {
+  const url = `${getApiBaseUrl()}/api/leases/history?tenantId=${tenantId}&listingId=${listingId}`;
+  return apiFetch(url);
+};
+
+// Get notification summary (all notifications in one request)
+export const getNotificationSummary = async (userId: string, userType: 'tenant' | 'landlord') => {
+  try {
+    const response = await apiFetch(`${getApiBaseUrl()}/api/notifications/summary/${userId}/${userType}`);
+    return response;
+  } catch (error) {
+    console.error('Error fetching notification summary:', error);
+    throw error;
+  }
 };

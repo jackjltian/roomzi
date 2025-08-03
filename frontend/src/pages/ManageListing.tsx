@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
 import { Bar } from 'react-chartjs-2';
 import {
@@ -96,11 +96,12 @@ const ManageListing = () => {
         fetchProperty();
     }, [id]);
 
+    // Fetch payments for the chart
     useEffect(() => {
         if (!property) return;
         const fetchPayments = async () => {
             try {
-                const response = await fetch(`http://localhost:3001/api/landlords/payments/${property.id}`, {
+                const response = await fetch(`http://localhost:3001/api/payments/listing/${property.id}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json'
@@ -108,59 +109,12 @@ const ManageListing = () => {
                     credentials: 'include',
                 });
                 const data = await response.json();
-                console.log('Payment data structure:', data);
-                if (response.ok) {
-                    // Fetch tenant names for each payment with better error handling
-                    const paymentsWithTenant = await Promise.all(
-                        data.map(async (payment) => {
-                            let tenantName = `Tenant ${payment.tenantId ? payment.tenantId.slice(0, 8) : 'Unknown'}`;
-                            
-                            if (payment.tenantId) {
-                                try {
-                                    const tenantResponse = await fetch(`http://localhost:3001/api/tenants/${payment.tenantId}`, {
-                                        method: 'GET',
-                                        headers: {
-                                            'Content-Type': 'application/json'
-                                        },
-                                        credentials: 'include',
-                                    });
-                                    
-                                    if (tenantResponse.ok) {
-                                        const tenantData = await tenantResponse.json();
-                                        console.log('Tenant response:', tenantData);
-                                        
-                                        if (tenantData.success && tenantData.data && tenantData.data.full_name) {
-                                            tenantName = tenantData.data.full_name;
-                                        } else if (tenantData.data && tenantData.data.full_name) {
-                                            tenantName = tenantData.data.full_name;
-                                        }
-                                    } else {
-                                        console.warn(`Failed to fetch tenant ${payment.tenantId}: ${tenantResponse.status}`);
-                                        // Keep the default tenant name
-                                    }
-                                } catch (error) {
-                                    console.warn('Error fetching tenant name:', error);
-                                    // Keep the default tenant name
-                                }
-                            }
-                            
-                            return {
-                                ...payment,
-                                tenantName
-                            };
-                        })
-                    );
-                    
-                    // Show all payments regardless of status
-                    setPayments(paymentsWithTenant);
-                } else if (response.status === 404) {
-                    console.log(`No payments found for listing ${property.id}`)
+                if (response.ok && data.success) {
+                    setPayments(data.payments || []);
                 }
             } catch (error) {
-                console.log("Error fetching payments")
+                console.log("Error fetching payments for chart");
                 setPayments([]);
-            } finally {
-                setLoading(false);
             }
         };
         fetchPayments();
@@ -169,41 +123,44 @@ const ManageListing = () => {
     if (loading) return <div>Loading...</div>;
     if (!property) return <div>Property not found</div>;
 
-    // Process payment data for the chart
-    const monthlyData = {};
+    // Calculate monthly income data for the chart
+    const monthlyData = {
+        Jan: 0, Feb: 0, Mar: 0, Apr: 0, May: 0, Jun: 0,
+        Jul: 0, Aug: 0, Sep: 0, Oct: 0, Nov: 0, Dec: 0
+    };
+
+    // Process payments to calculate monthly income
     payments.forEach(payment => {
-        try {
-            if (payment.status == 'Approved') {
-                const date = new Date(payment.date);
-                const monthYear = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                if (!monthlyData[monthYear]) {
-                    monthlyData[monthYear] = 0;
-                }
-                const amount = parseFloat(payment.amount) || 0;
-                monthlyData[monthYear] += amount;
+        if (payment.status === 'Approved') {
+            let month;
+            // Use the month field if available (more accurate), otherwise fall back to payment date
+            if (payment.month) {
+                const [year, monthNum] = payment.month.split('-');
+                const date = new Date(parseInt(year), parseInt(monthNum) - 1);
+                month = date.toLocaleDateString('en-US', { month: 'short' });
+            } else {
+                const paymentDate = new Date(payment.date);
+                month = paymentDate.toLocaleDateString('en-US', { month: 'short' });
             }
-        } catch (error) {
-            console.error('Error processing payment for chart:', error);
+            
+            if (monthlyData.hasOwnProperty(month)) {
+                monthlyData[month] += parseFloat(payment.amount);
+            }
         }
     });
 
-    // Sort the monthly data chronologically
-    const sortedEntries = Object.entries(monthlyData).sort((a, b) => {
-        const dateA = new Date(a[0]);
-        const dateB = new Date(b[0]);
-        return dateA.getTime() - dateB.getTime();
-    });
-
-    const sortedLabels = sortedEntries.map(([label]) => label);
-    const sortedData = sortedEntries.map(([, value]) => value);
-
+    // Chart data for monthly income
     const chartData = {
-        labels: sortedLabels.length > 0 ? sortedLabels : ['No Data'],
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
         datasets: [
             {
-                label: 'Approved Payments',
-                data: sortedData.length > 0 ? sortedData : [0],
-                backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                label: 'Monthly Income',
+                data: [
+                    monthlyData.Jan, monthlyData.Feb, monthlyData.Mar, monthlyData.Apr,
+                    monthlyData.May, monthlyData.Jun, monthlyData.Jul, monthlyData.Aug,
+                    monthlyData.Sep, monthlyData.Oct, monthlyData.Nov, monthlyData.Dec
+                ],
+                backgroundColor: 'rgba(59, 130, 246, 0.5)',
                 borderColor: 'rgba(59, 130, 246, 1)',
                 borderWidth: 1,
             },
@@ -216,21 +173,12 @@ const ManageListing = () => {
             legend: {
                 position: 'top' as const,
             },
-            title: {
-                display: true,
-                text: 'Monthly Payment Income',
-            },
         },
         scales: {
             y: {
                 beginAtZero: true,
-                ticks: {
-                    callback: function(value) {
-                        return '$' + value.toLocaleString();
-                    }
-                }
-            }
-        }
+            },
+        },
     };
 
     return (
@@ -266,7 +214,7 @@ const ManageListing = () => {
                                     <Button className="w-fit">
                                         View Tenant Details
                                     </Button>
-                                    <Button className="w-fit">
+                                    <Button className="w-fit" onClick={() => navigate(`/landlord/lease-agreement/${property.id}`)}>
                                         View Lease Agreement
                                     </Button>
                                 </div>
@@ -291,60 +239,7 @@ const ManageListing = () => {
                                 </div>
                             </Card>
 
-                            {/* Payment History */}
-                            <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-                                <h2 className="text-xl font-semibold mb-4 text-gray-900">Payment History</h2>
-                                <div>
-                                    {payments.length > 0 ? (
-                                        payments.map((payment, index) => (
-                                            <div key={payment.id || `payment-${index}`} className="border-b border-gray-200 py-3">
-                                                <div className="flex justify-between items-center">
-                                                    <div>
-                                                        <p className="font-semibold">${parseFloat(payment.amount).toFixed(2)}</p>
-                                                        <p className="text-sm text-gray-600">{new Date(payment.date).toLocaleDateString()}</p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-sm text-gray-600">{payment.tenantName || 'Unknown Tenant'}</p>
-                                                        <div className="flex items-center justify-end mt-1">
-                                                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                                                payment.status === 'Approved' 
-                                                                    ? 'bg-green-100 text-green-800' 
-                                                                    : payment.status === 'Pending'
-                                                                    ? 'bg-yellow-100 text-yellow-800'
-                                                                    : 'bg-red-100 text-red-800'
-                                                            }`}>
-                                                                {payment.status}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex justify-end mt-2">
-                                                    {payment.proofUrl ? (
-                                                        <a 
-                                                            href={`http://localhost:3001${payment.proofUrl}`} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer" 
-                                                            className="flex items-center text-blue-600 hover:underline text-sm"
-                                                        >
-                                                            <FileText className="w-4 h-4 mr-1" />
-                                                            View Proof
-                                                        </a>
-                                                    ) : (
-                                                        <span className="flex items-center text-gray-400 text-sm">
-                                                            <FileText className="w-4 h-4 mr-1" />
-                                                            No Proof
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="text-center text-gray-500 py-8">
-                                            No payment history available for this listing
-                                        </div>
-                                    )}
-                                </div>
-                            </Card>
+
                         </div>
                     </div>
                 </div>

@@ -5,14 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, User, Camera, FileText, CreditCard, Settings, Home, Loader2, Save, X } from 'lucide-react';
+import { ArrowLeft, User, Camera, FileText, Settings, Home, Loader2, Save, X, Download, Trash2, Upload } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
 
 import { landlordApi, ApiError, apiFetch, getApiBaseUrl, tenantApi } from '@/utils/api';
 import { updateUserMetadata } from '@/utils/auth';
 import { supabase } from '@/lib/supabaseClient';
+import { documentUtils } from '@/utils/api';
 
 interface TenantProfileData {
   id: string;
@@ -21,8 +23,15 @@ interface TenantProfileData {
   phone?: string | null;
   image_url?: string | null;
   address?: string | null;
+  documents?: Array<{ path: string; displayName: string }>;
   created_at?: string;
   updated_at?: string;
+  viewingRequestNotifications?: boolean;
+  rentReminderDays?: number;
+  preferredHouseTypes?: string[];
+  preferredRentMin?: number;
+  preferredRentMax?: number;
+  preferredDistance?: number;
 }
 
 const TenantProfile = () => {
@@ -53,6 +62,152 @@ const TenantProfile = () => {
     address: '',
   });
 
+  // Add state for document upload
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [newDocFile, setNewDocFile] = useState<File | null>(null);
+  const [newDocName, setNewDocName] = useState('');
+  const [documents, setDocuments] = useState<{ path: string; displayName: string }[]>([]);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewName, setPreviewName] = useState<string>('');
+  const [previewType, setPreviewType] = useState<'image' | 'pdf' | 'other'>('other');
+
+  // Add state for settings
+  const [viewingRequestNotifications, setViewingRequestNotifications] = useState(true);
+  const [rentReminderDays, setRentReminderDays] = useState(3);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Add state for preferences
+  const [preferredHouseTypes, setPreferredHouseTypes] = useState<string[]>([]);
+  const [preferredRentMin, setPreferredRentMin] = useState<number | undefined>();
+  const [preferredRentMax, setPreferredRentMax] = useState<number | undefined>();
+  const [preferredDistance, setPreferredDistance] = useState<number | undefined>();
+
+  const tabs = [
+    { id: 'info', label: 'Personal Info', icon: User },
+    { id: 'docs', label: 'Documents', icon: FileText },
+    { id: 'settings', label: 'Settings', icon: Settings },
+  ];
+
+  // Combined function to save all settings and preferences
+  const saveAllSettings = async () => {
+    if (!user?.id) return;
+    
+    // Check if user has set their address for distance filtering
+    if (preferredDistance && !profileData?.address) {
+      toast({
+        title: "Address Required",
+        description: "Please set your current address in Personal Info to use distance filtering.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    console.log('Saving all settings:', { 
+      viewingRequestNotifications, 
+      rentReminderDays,
+      preferredHouseTypes,
+      preferredRentMin,
+      preferredRentMax,
+      preferredDistance
+    });
+    
+    setSavingSettings(true);
+    try {
+      // Save all settings and preferences in one API call
+      const updateResult = await tenantApi.update(user.id, {
+        viewingRequestNotifications,
+        rentReminderDays,
+        preferredHouseTypes,
+        preferredRentMin,
+        preferredRentMax,
+        preferredDistance,
+      });
+
+      console.log('Update result:', updateResult);
+
+      if (updateResult.success) {
+        toast({
+          title: "Settings Saved",
+          description: "All your settings and preferences have been updated.",
+          variant: "default",
+        });
+      } else {
+        console.error('Update failed:', updateResult);
+        toast({
+          title: "Save Failed",
+          description: "Failed to save settings. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+
+
+  // Add function to handle house type selection
+  const handleHouseTypeToggle = (houseType: string) => {
+    setPreferredHouseTypes(prev => 
+      prev.includes(houseType)
+        ? prev.filter(type => type !== houseType)
+        : [...prev, houseType]
+    );
+  };
+
+  // Add function to clear all house preferences
+  const handleClearHousePreferences = async () => {
+    if (!user?.id) return;
+    
+    setSavingSettings(true);
+    try {
+      // Clear local state
+      setPreferredHouseTypes([]);
+      setPreferredRentMin(undefined);
+      setPreferredRentMax(undefined);
+      setPreferredDistance(undefined);
+      
+      // Save cleared preferences to database
+      const updateResult = await tenantApi.update(user.id, {
+        preferredHouseTypes: [],
+        preferredRentMin: null,
+        preferredRentMax: null,
+        preferredDistance: null,
+      });
+
+      if (updateResult.success) {
+        toast({
+          title: "Preferences Cleared",
+          description: "All house preferences have been reset and saved.",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Save Failed",
+          description: "Preferences were cleared but failed to save. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing preferences:', error);
+      toast({
+        title: "Error",
+        description: "Failed to clear preferences. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Update useEffect to fetch settings from API
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user?.id) return;
@@ -69,17 +224,35 @@ const TenantProfile = () => {
             phone: result.data.data.phone || '',
             address: result.data.data.address || '',
           });
+          setDocuments(result.data.data.documents || []);
+          // Set settings from API response
+          setViewingRequestNotifications(result.data.data.viewingRequestNotifications ?? true);
+          setRentReminderDays(result.data.data.rentReminderDays ?? 3);
+          // Set preferences from API response
+          setPreferredHouseTypes(result.data.data.preferredHouseTypes || []);
+          setPreferredRentMin(result.data.data.preferredRentMin);
+          setPreferredRentMax(result.data.data.preferredRentMax);
+          setPreferredDistance(result.data.data.preferredDistance);
         } else {
-          // Create profile if not found
-          const createResult = await tenantApi.create(user.id, user.email || '');
+          // Create profile if not found with user's auth data
+          const createResult = await tenantApi.create(user.id, user.email || '', user.user_metadata);
           if (createResult.success && createResult.data) {
             setProfileData(createResult.data.data);
             setFormData({
-              full_name: user.user_metadata?.full_name || '',
-              email: user.email || '',
-              phone: '',
-              address: '',
+              full_name: createResult.data.data.full_name || '',
+              email: createResult.data.data.email || '',
+              phone: createResult.data.data.phone || '',
+              address: createResult.data.data.address || '',
             });
+            setDocuments(createResult.data.data.documents || []);
+            // Set settings from created profile
+            setViewingRequestNotifications(createResult.data.data.viewingRequestNotifications ?? true);
+            setRentReminderDays(createResult.data.data.rentReminderDays ?? 3);
+            // Set preferences from created profile
+            setPreferredHouseTypes(createResult.data.data.preferredHouseTypes || []);
+            setPreferredRentMin(createResult.data.data.preferredRentMin);
+            setPreferredRentMax(createResult.data.data.preferredRentMax);
+            setPreferredDistance(createResult.data.data.preferredDistance);
             setEditMode(true);
           }
         }
@@ -110,7 +283,7 @@ const TenantProfile = () => {
     setSwitching(true);
 
     try {
-      const profileResult = await landlordApi.create(user.id, user.email || '');
+      const profileResult = await landlordApi.create(user.id, user.email || '', user.user_metadata);
 
       if (profileResult.success) {
         if (profileResult.alreadyExists) {
@@ -176,15 +349,18 @@ const TenantProfile = () => {
       });
 
       if (updateResult.success) {
-        setProfileData(prev => prev ? {
-          ...prev,
-          ...formData,
-          phone: formData.phone || null,
-          address: formData.address || null,
-        } : null);
-
+        // Always fetch the latest profile data after update
+        const refreshed = await tenantApi.getById(user.id);
+        if (refreshed.success && refreshed.data) {
+          setProfileData(refreshed.data.data);
+          setFormData({
+            full_name: refreshed.data.data.full_name || '',
+            email: refreshed.data.data.email || '',
+            phone: refreshed.data.data.phone || '',
+            address: refreshed.data.data.address || '',
+          });
+        }
         setEditMode(false);
-
         window.dispatchEvent(new CustomEvent('tenantProfileUpdated', {
           detail: {
             fullName: formData.full_name,
@@ -194,9 +370,7 @@ const TenantProfile = () => {
             profilePhoto,
           }
         }));
-
         navigate('/tenant', { state: { profileUpdated: true } });
-
         toast({
           title: "Success",
           description: "Profile updated successfully!",
@@ -227,29 +401,22 @@ const TenantProfile = () => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}_${Date.now()}.${fileExt}`;
-      const filePath = `profile-photos/${fileName}`;
-      // Show preview immediately
-      const localPreview = URL.createObjectURL(file);
-      setProfilePhoto(localPreview);
+      const filePath = `profile-images/${fileName}`; // use profile-images bucket
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
-        .from('profile-photos')
+        .from('profile-images') // use profile-images bucket
         .upload(filePath, file, { upsert: true });
       if (uploadError) throw uploadError;
       // Get public URL
-      const { data } = supabase.storage.from('profile-photos').getPublicUrl(filePath);
+      const { data } = supabase.storage.from('profile-images').getPublicUrl(filePath); // use profile-images bucket
       if (!data?.publicUrl) throw new Error('Failed to get public URL');
-      setProfilePhoto(data.publicUrl);
       // Update user metadata/profile with new photo URL
-      const response = await apiFetch(`/api/tenant/update-profile`, {
-        method: 'POST',
-        body: JSON.stringify({
-          id: user.id,
-          profilePhoto: data.publicUrl,
-        }),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!response.success) throw new Error(response.message || 'Failed to update profile photo');
+      await tenantApi.update(user.id, { image_url: data.publicUrl });
+      // Always fetch the latest profile data after update
+      const refreshed = await tenantApi.getById(user.id);
+      if (refreshed.success && refreshed.data) {
+        setProfileData(refreshed.data.data);
+      }
       toast({
         title: 'Profile Photo Updated',
         description: 'Your new photo has been saved.',
@@ -264,7 +431,7 @@ const TenantProfile = () => {
     } finally {
       setUploadingPhoto(false);
     }
-  }; // <-- added missing closing brace here
+  };
 
   const handleCancelEdit = () => {
     if (profileData) {
@@ -278,12 +445,72 @@ const TenantProfile = () => {
     setEditMode(false);
   };
 
-  const tabs = [
-    { id: 'info', label: 'Personal Info', icon: User },
-    { id: 'docs', label: 'Documents', icon: FileText },
-    { id: 'credit', label: 'Credit Score', icon: CreditCard },
-    { id: 'settings', label: 'Settings', icon: Settings },
-  ];
+  // Add document upload handler
+  const handleDocumentUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user?.id || !newDocFile || !newDocName.trim()) return;
+
+    setUploadingDocument(true);
+    try {
+      const documentPath = await documentUtils.uploadDocument(newDocFile, user.id, newDocName);
+      const newDocObj = { path: documentPath, displayName: newDocName };
+      const newDocuments = [...(profileData?.documents || []), newDocObj];
+      console.log('Sending documents to API:', newDocuments);
+      const updateResult = await tenantApi.update(user.id, { documents: newDocuments });
+
+      if (updateResult.success) {
+        setDocuments(newDocuments);
+        setProfileData(prev => prev ? { ...prev, documents: newDocuments } : null);
+        setNewDocFile(null);
+        setNewDocName('');
+        toast({ title: "Success", description: `Document uploaded successfully!`, variant: "default" });
+      }
+    } catch (error) {
+      toast({ title: "Upload Failed", description: (error as Error)?.message || "Failed to upload document.", variant: "destructive" });
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  // Add document delete handler
+  const handleDocumentDelete = async (docObj: { path: string; displayName: string }) => {
+    if (!user?.id) return;
+
+    try {
+      await documentUtils.deleteDocument(docObj.path);
+      const newDocuments = (profileData?.documents || []).filter(d => d.path !== docObj.path);
+      const updateResult = await tenantApi.update(user.id, { documents: newDocuments });
+
+      if (updateResult.success) {
+        setDocuments(newDocuments);
+        setProfileData(prev => prev ? { ...prev, documents: newDocuments } : null);
+        toast({ title: "Success", description: "Document deleted successfully!", variant: "default" });
+      }
+    } catch (error) {
+      toast({ title: "Delete Failed", description: (error as Error)?.message || "Failed to delete document.", variant: "destructive" });
+    }
+  };
+
+  // Add document view handler
+  const handleDocumentView = async (docObj: { path: string; displayName: string }) => {
+    try {
+      const { data } = await supabase.storage.from('documents').createSignedUrl(docObj.path, 60);
+      if (data?.signedUrl) {
+        setPreviewUrl(data.signedUrl);
+        const fileExtension = docObj.path.split('.').pop()?.toLowerCase();
+        if (fileExtension === 'pdf') {
+          setPreviewType('pdf');
+        } else if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExtension || '')) {
+          setPreviewType('image');
+        } else {
+          setPreviewType('other');
+        }
+        setPreviewName(docObj.displayName || docObj.path.split('/').pop() || 'Document');
+      }
+    } catch (error) {
+      toast({ title: "View Failed", description: "Failed to open document. Please try again.", variant: "destructive" });
+    }
+  };
 
   if (loading) {
     return (
@@ -324,8 +551,8 @@ const TenantProfile = () => {
           <div className="flex items-center space-x-6">
             <div className="relative">
               <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
-                {profilePhoto ? (
-                  <img src={profilePhoto} alt="Profile" className="w-24 h-24 object-cover" />
+                {profileData?.image_url ? (
+                  <img src={profileData.image_url} alt="Profile" className="w-24 h-24 object-cover" />
                 ) : (
                   <User className="w-12 h-12 text-gray-500" />
                 )}
@@ -361,16 +588,6 @@ const TenantProfile = () => {
               <Badge className="mt-2 bg-green-100 text-green-800">Verified</Badge>
             </div>
             <div className="flex gap-2">
-              {!editMode && (
-                <Button
-                  onClick={() => setEditMode(true)}
-                  variant="outline"
-                  className="flex items-center"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </Button>
-              )}
               <Button
                 onClick={handleSwitchToLandlord}
                 variant="outline"
@@ -447,6 +664,7 @@ const TenantProfile = () => {
                   value={formData.full_name}
                   onChange={(e) => handleInputChange('full_name', e.target.value)}
                   disabled={!editMode}
+                  placeholder="Enter your full name"
                 />
               </div>
               <div>
@@ -457,6 +675,8 @@ const TenantProfile = () => {
                   value={formData.email}
                   onChange={(e) => handleInputChange('email', e.target.value)}
                   disabled={!editMode}
+                  type="email"
+                  placeholder="Enter your email"
                 />
               </div>
               <div>
@@ -467,6 +687,8 @@ const TenantProfile = () => {
                   value={formData.phone}
                   onChange={(e) => handleInputChange('phone', e.target.value)}
                   disabled={!editMode}
+                  type="tel"
+                  placeholder="Enter your phone number"
                 />
               </div>
               <div>
@@ -477,13 +699,240 @@ const TenantProfile = () => {
                   value={formData.address}
                   onChange={(e) => handleInputChange('address', e.target.value)}
                   disabled={!editMode}
+                  placeholder="Enter your address"
                 />
+              </div>
+            </div>
+            {!editMode && (
+              <Button 
+                className="mt-4 roomzi-gradient"
+                onClick={() => setEditMode(true)}
+              >
+                Edit Information
+              </Button>
+            )}
+          </Card>
+        )}
+        {activeTab === 'docs' && (
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Documents</h3>
+            <div className="mb-2 text-sm text-gray-600">Allowed file types: PDF, JPG, JPEG, PNG, DOC, DOCX. Max size: 10MB.</div>
+            <form className="flex gap-2 mb-4" onSubmit={handleDocumentUpload}>
+              <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={e => setNewDocFile(e.target.files?.[0] || null)} />
+              <Input type="text" placeholder="Display name" value={newDocName} onChange={e => setNewDocName(e.target.value)} />
+              <Button type="submit" disabled={uploadingDocument || !newDocFile || !newDocName.trim()}>{uploadingDocument ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Upload</Button>
+            </form>
+            <ul className="space-y-2">
+              {(profileData?.documents || [])
+                .filter(docObj => docObj && typeof docObj === 'object' && docObj.path)
+                .map((docObj, idx) => (
+                  <li key={docObj.path || idx} className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    <span className="flex-1">{docObj.displayName || (docObj.path ? docObj.path.split('/').pop() : 'Unknown')}</span>
+                    <Button size="sm" variant="outline" onClick={() => handleDocumentView(docObj)}><Download className="w-4 h-4" /> View</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDocumentDelete(docObj)}><Trash2 className="w-4 h-4" /> Delete</Button>
+                  </li>
+                ))}
+              </ul>
+          </Card>
+        )}
+        {activeTab === 'settings' && (
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-6">Settings</h3>
+            <div className="space-y-8">
+              {/* Notification Settings */}
+              <div>
+                <h4 className="text-lg font-medium mb-4">Notification Settings</h4>
+                <div className="space-y-4">
+                  {/* a) Viewing Request Notifications */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h5 className="font-medium">Viewing Request Notifications</h5>
+                      <p className="text-sm text-gray-600">Enable notifications for viewing request updates</p>
+                    </div>
+                                    <Switch
+                  checked={viewingRequestNotifications}
+                  onCheckedChange={(checked) => {
+                    console.log('Toggle changed:', checked);
+                    setViewingRequestNotifications(checked);
+                  }}
+                />
+                  </div>
+                  {/* b) Rent Payment Reminder Days */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <h5 className="font-medium">Rent Payment Reminder</h5>
+                      <p className="text-sm text-gray-600">Number of days before rent due to receive a reminder</p>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={rentReminderDays}
+                      onChange={e => setRentReminderDays(Number(e.target.value))}
+                      className="w-20 border rounded px-2 py-1 text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* House Preferences */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-lg font-medium">House Preferences</h4>
+                  <Button
+                    onClick={handleClearHousePreferences}
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    Clear All Preferences
+                  </Button>
+                </div>
+                <div className="space-y-6">
+                  {/* House Type Preferences */}
+                  <div>
+                    <h5 className="font-medium mb-3">Preferred House Types</h5>
+                    <p className="text-sm text-gray-600 mb-3">Select the types of properties you're interested in</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {['room', 'apartment', 'house', 'condo'].map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => handleHouseTypeToggle(type)}
+                          className={`p-3 border rounded-lg text-sm font-medium transition-colors ${
+                            preferredHouseTypes.includes(type)
+                              ? 'bg-blue-50 border-blue-500 text-blue-700'
+                              : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                          }`}
+                        >
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Rent Range Preferences */}
+                  <div>
+                    <h5 className="font-medium mb-3">Rent Range</h5>
+                    <p className="text-sm text-gray-600 mb-3">Set your preferred monthly rent range</p>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Minimum Rent ($)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="100"
+                          value={preferredRentMin || ''}
+                          onChange={(e) => setPreferredRentMin(e.target.value ? Number(e.target.value) : undefined)}
+                          placeholder="e.g., 1000"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Maximum Rent ($)
+                        </label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="100"
+                          value={preferredRentMax || ''}
+                          onChange={(e) => setPreferredRentMax(e.target.value ? Number(e.target.value) : undefined)}
+                          placeholder="e.g., 3000"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Distance Preferences */}
+                  <div>
+                    <h5 className="font-medium mb-3">Maximum Distance</h5>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {profileData?.address 
+                        ? "Set the maximum distance from your current location"
+                        : "Please set your current address in Personal Info to use distance filtering"
+                      }
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={preferredDistance || ''}
+                        onChange={(e) => setPreferredDistance(e.target.value ? Number(e.target.value) : undefined)}
+                        placeholder="e.g., 10"
+                        disabled={!profileData?.address}
+                        className="w-32"
+                      />
+                      <span className="text-sm text-gray-600">miles</span>
+                    </div>
+                    {!profileData?.address && (
+                      <p className="text-sm text-orange-600 mt-2">
+                        ⚠️ Distance filtering requires your current address to be set
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="flex justify-end pt-4">
+                <Button 
+                  onClick={saveAllSettings}
+                  disabled={savingSettings}
+                  className="roomzi-gradient"
+                >
+                  {savingSettings ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Settings
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </Card>
         )}
-        {/* TODO: add content for other tabs */}
       </div>
+      {previewUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-2xl w-full relative shadow-lg">
+            <button className="absolute top-2 right-2 text-gray-500 hover:text-black" onClick={() => setPreviewUrl(null)}>
+              <X className="w-6 h-6" />
+            </button>
+            <h4 className="mb-4 font-semibold text-lg">{previewName}</h4>
+            {previewType === 'image' && (
+              <img src={previewUrl} alt="Document Preview" className="max-h-[70vh] mx-auto" />
+            )}
+            {previewType === 'pdf' && (
+              <iframe src={previewUrl} title="PDF Preview" className="w-full h-[70vh] border rounded" />
+            )}
+            {previewType === 'other' && (
+              <div className="text-center">
+                <p className="mb-2">Preview not available for this file type.</p>
+              </div>
+            )}
+            {/* Download button for all types */}
+            <div className="mt-4 text-center">
+              <a
+                href={previewUrl}
+                download={previewName || 'document'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Download
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
