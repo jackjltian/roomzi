@@ -7,6 +7,8 @@ import {
   getChatMessages,
   deleteChat,
   deleteMessage,
+  markChatAsRead,
+  updateAllChatNamesEndpoint,
 } from "../controllers/chatController.js";
 
 const router = express.Router();
@@ -23,6 +25,9 @@ router.post("/", createChat);
 // DELETE /api/chats/:id - Delete chat
 router.delete("/:id", deleteChat);
 
+// PATCH /api/chats/:chatId/read - Mark chat as read
+router.patch("/:chatId/read", markChatAsRead);
+
 // GET /api/chats/:chatId/messages - Get messages for a chat
 router.get("/:chatId/messages", getChatMessages);
 
@@ -31,5 +36,8 @@ router.post("/messages", sendMessage);
 
 // DELETE /api/chats/messages/:id - Delete a single message
 router.delete("/messages/:id", deleteMessage);
+
+// POST /api/chats/update-names - Update all chat names (maintenance endpoint)
+router.post("/update-names", updateAllChatNamesEndpoint);
 
 export default router;

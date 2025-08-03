@@ -68,12 +68,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       // Handle different auth events
       if (event === 'SIGNED_IN' && session?.user) {
-        redirectBasedOnRole(session.user);
+        // Only redirect if user is on auth pages
+        if (window.location.pathname === '/auth' || window.location.pathname === '/login' || window.location.pathname === '/signup') {
+          redirectBasedOnRole(session.user);
+        }
       } else if (event === 'SIGNED_OUT') {
         // Clear role selection when user signs out
         localStorage.removeItem('roomzi_selected_role');
         navigate('/auth');
       }
+      // Don't redirect on other auth state changes (like token refresh)
     });
 
     return () => subscription.unsubscribe();

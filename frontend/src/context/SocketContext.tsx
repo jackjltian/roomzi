@@ -11,6 +11,8 @@ interface SocketContextType {
     senderId: string;
     content: string;
     senderType: 'tenant' | 'landlord';
+    tempId?: string;
+    replyToId?: string;
   }) => void;
   sendTyping: (data: {
     chatId: string;
@@ -20,6 +22,11 @@ interface SocketContextType {
   sendStopTyping: (data: {
     chatId: string;
     userId: string;
+  }) => void;
+  markChatAsRead: (data: {
+    chatId: string;
+    userId: string;
+    userType: 'tenant' | 'landlord';
   }) => void;
 }
 
@@ -45,7 +52,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     
     const newSocket = io(API_URL, {
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       autoConnect: true,
     });
 
@@ -88,6 +95,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     senderId: string;
     content: string;
     senderType: 'tenant' | 'landlord';
+    tempId?: string;
+    replyToId?: string;
   }) => {
     if (socket && isConnected) {
       socket.emit('send-message', {
@@ -116,6 +125,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
   };
 
+  const markChatAsRead = (data: {
+    chatId: string;
+    userId: string;
+    userType: 'tenant' | 'landlord';
+  }) => {
+    if (socket && isConnected) {
+      socket.emit('mark-chat-read', data);
+    }
+  };
+
   const value: SocketContextType = {
     socket,
     isConnected,
@@ -124,6 +143,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     sendMessage,
     sendTyping,
     sendStopTyping,
+    markChatAsRead,
   };
 
   return (

@@ -3,12 +3,17 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Home, User, ArrowLeft, Calendar, Settings, MessageCircle } from 'lucide-react';
+import { MapPin, Home, User, ArrowLeft, Settings, MessageCircle } from 'lucide-react';
 import { sampleProperties } from '@/data/sampleProperties';
 import Map from '@/components/Map';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 import { ChatWindow } from '@/components/chat/ChatWindow';
 import { apiFetch, getApiBaseUrl } from '@/utils/api';
+import { useAuth } from '@/context/AuthContext';
 
 // Helper to safely parse images field
 function parseImages(images) {
@@ -46,10 +51,15 @@ const PropertyDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [mapboxToken, setMapboxToken] = useState<string>(import.meta.env.VITE_MAPBOX_TOKEN || '');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedTime, setSelectedTime] = useState('');
+  const { toast } = useToast();
+  const { user } = useAuth();
   
   useEffect(() => {
     const fetchProperty = async () => {
@@ -60,16 +70,35 @@ const PropertyDetails = () => {
           const data = response.data;
           setProperty({
             ...data,
-            houseRules: data.house_rules,
-            landlordName: data.landlord_name,
-            landlordPhone: data.landlord_phone,
-            landlordId: data.landlord_id,
-            zipCode: data.zip_code,
-            leaseType: data.lease_type,
+            house_rules: data.house_rules,
+            landlord_name: data.landlord_name,
+            landlord_phone: data.landlord_phone,
+            landlord_id: data.landlord_id,
+            zip_code: data.zip_code,
+            lease_type: data.lease_type,
             images: data.images,
             amenities: data.amenities,
             requirements: data.requirements,
-            coordinates: data.coordinates,
+            coordinates: (() => {
+              try {
+                if (!data.coordinates || data.coordinates === 'null') return { lat: 0, lng: 0 };
+                if (typeof data.coordinates === 'string') {
+                  // Check if it's a JSON string first
+                  if (data.coordinates.trim().startsWith('{')) {
+                    return JSON.parse(data.coordinates);
+                  }
+                  // If it's a comma-separated string like "lat,lng"
+                  const coords = data.coordinates.split(',');
+                  if (coords.length === 2) {
+                    return { lat: parseFloat(coords[0].trim()), lng: parseFloat(coords[1].trim()) };
+                  }
+                }
+                return data.coordinates;
+              } catch (e) {
+                console.warn('Failed to parse coordinates:', data.coordinates, e);
+                return { lat: 0, lng: 0 };
+              }
+            })(),
             // Add more mappings as needed
           });
         } else {
@@ -90,7 +119,7 @@ const PropertyDetails = () => {
   const images = parseImages(property.images);
   const requirements = parseArrayField(property.requirements);
   const amenities = parseArrayField(property.amenities);
-  const houseRules = parseArrayField(property.houseRules);
+  const houseRules = parseArrayField(property.house_rules);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 pb-20">
@@ -159,7 +188,7 @@ const PropertyDetails = () => {
               
               <div className="flex items-center text-gray-600 mb-4">
                 <MapPin className="w-5 h-5 mr-2 text-blue-500" />
-                <span className="text-lg">{property.address}, {property.city}, {property.state} {property.zipCode}</span>
+                <span className="text-lg">{property.address}, {property.city}, {property.state} {property.zip_code}</span>
               </div>
 
               <div className="flex items-center text-gray-600 mb-6">
@@ -233,8 +262,8 @@ const PropertyDetails = () => {
                   <User className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">{property.landlordName}</p>
-                  <p className="text-sm text-gray-600">{property.landlordPhone}</p>
+                                  <p className="font-medium text-gray-900">{property.landlord_name}</p>
+                <p className="text-sm text-gray-600">{property.landlord_phone}</p>
                 </div>
               </div>
               
@@ -245,13 +274,11 @@ const PropertyDetails = () => {
                 >
                   Send Message
                 </Button>
-                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
-                  <Calendar className="w-4 h-4 mr-2" />
+                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200" onClick={() => setIsScheduleModalOpen(true)}>
+                  <CalendarIcon className="w-4 h-4 mr-2" />
                   Schedule Viewing
                 </Button>
-                <Button variant="outline" className="w-full hover:bg-blue-50 border-blue-200">
-                  Call Now
-                </Button>
+
               </div>
             </Card>
 
@@ -261,8 +288,8 @@ const PropertyDetails = () => {
                 <ChatWindow 
                   propertyTitle={property.title}
                   propertyImage={images[0]}
-                  landlordName={property.landlordName}
-                  landlordId={property.landlordId}
+                                landlordName={property.landlord_name}
+              landlordId={property.landlord_id}
                   chatRoomId={undefined}
                   propertyId={property.id}
                 />
@@ -273,25 +300,13 @@ const PropertyDetails = () => {
             <Card className="p-6 shadow-lg border-0 bg-white/80 backdrop-blur-sm">
               <h3 className="text-lg font-semibold mb-4">Location</h3>
               <div className="aspect-square rounded-lg overflow-hidden">
-                {mapboxToken ? (
-                  <Map 
-                    properties={[property]} 
-                    onPropertyClick={() => {}}
-                    mapboxToken={mapboxToken}
-                  />
-                ) : (
-                  <div className="h-full bg-gray-100 rounded-lg flex flex-col items-center justify-center p-4">
-                    <MapPin className="w-8 h-8 text-gray-400 mb-2" />
-                    <p className="text-center text-gray-500 text-sm mb-3">Enter Mapbox token to view map</p>
-                    <input
-                      type="text"
-                      placeholder="Mapbox token..."
-                      value={mapboxToken}
-                      onChange={(e) => setMapboxToken(e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                )}
+                <Map 
+                  properties={[property]} 
+                  onPropertyClick={() => {}}
+                  mapboxToken={mapboxToken}
+                  onTokenSubmit={setMapboxToken}
+                  showUserLocation={true}
+                />
               </div>
             </Card>
           </div>
@@ -319,6 +334,74 @@ const PropertyDetails = () => {
           </Button>
         </div>
       </nav>
+
+      <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogTitle>Schedule a Viewing</DialogTitle>
+          <DialogDescription>Select a date and time for your viewing request.</DialogDescription>
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-1 font-medium">Date</label>
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                initialFocus
+              />
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Time</label>
+              <input
+                type="time"
+                className="border rounded px-3 py-2 w-full"
+                value={selectedTime}
+                onChange={e => setSelectedTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              disabled={!selectedDate || !selectedTime}
+              onClick={async () => {
+                if (!selectedDate || !selectedTime) return;
+                try {
+                  // Combine date and time into ISO string
+                  const [hours, minutes] = selectedTime.split(':');
+                  const dateTime = new Date(selectedDate);
+                  dateTime.setHours(Number(hours));
+                  dateTime.setMinutes(Number(minutes));
+                  // Debug log
+                  console.log('Scheduling viewing:', {
+                    propertyId: property.id,
+                    tenantId: user.id,
+                    landlordId: property.landlordId,
+                    requestedDateTime: dateTime.toISOString(),
+                    selectedDate,
+                    selectedTime,
+                    dateTime,
+                  });
+                  // Prepare payload
+                  await apiFetch(`${getApiBaseUrl()}/api/viewings`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      propertyId: property.id,
+                      tenantId: user.id,
+                      landlordId: property.landlordId,
+                      requestedDateTime: dateTime.toISOString(),
+                    }),
+                  });
+                  setIsScheduleModalOpen(false);
+                  toast({ title: 'Viewing request submitted!', description: `Requested for ${format(selectedDate, 'PPP')} at ${selectedTime}` });
+                } catch (err) {
+                  toast({ title: 'Error', description: 'Failed to submit viewing request', variant: 'destructive' });
+                }
+              }}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

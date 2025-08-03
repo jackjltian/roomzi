@@ -6,6 +6,7 @@ import {
   getPaymentsByListing,
   updatePaymentStatus,
 } from "../controllers/paymentController.js";
+import { getIO } from "../config/socket.js";
 
 const router = express.Router();
 
@@ -21,6 +22,9 @@ router.get("/tenant/:tenantId", getPaymentsByTenant);
 router.get("/listing/:listingId", getPaymentsByListing);
 
 // Update payment status (approve/reject)
-router.patch('/:paymentId/status', updatePaymentStatus);
+router.patch('/:paymentId/status', (req, res) => {
+  req.io = getIO();
+  updatePaymentStatus(req, res);
+});
 
 export default router;
