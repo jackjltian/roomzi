@@ -36,7 +36,7 @@ const TenantDashboard = () => {
   const [selectedType, setSelectedType] = useState<string>('all');
   const [priceRange, setPriceRange] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
-  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [mapboxToken, setMapboxToken] = useState<string>(import.meta.env.VITE_MAPBOX_TOKEN || '');
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
   const { toast } = useToast();
@@ -243,7 +243,7 @@ const TenantDashboard = () => {
           address: listing.address,
           city: listing.city,
           state: listing.state,
-          zipCode: listing.zip_code,
+          zip_code: listing.zip_code,
           price: listing.price,
           type: listing.type.toLowerCase(),
           bedrooms: listing.bedrooms,
@@ -252,13 +252,22 @@ const TenantDashboard = () => {
           images: parseMaybeJson(listing.images, []),
           description: listing.description,
           amenities: parseMaybeJson(listing.amenities, []),
-          landlordId: listing.landlord_id,
-          landlordName: listing.landlord_name,
-          landlordPhone: listing.landlord_phone,
+          landlord_id: listing.landlord_id,
+          landlord_name: listing.landlord_name,
+          landlord_phone: listing.landlord_phone,
           coordinates: (() => {
             try {
               if (!listing.coordinates || listing.coordinates === 'null') return null;
               if (typeof listing.coordinates === 'string') {
+                // Check if it's a JSON string first
+                if (listing.coordinates.trim().startsWith('{')) {
+                  return JSON.parse(listing.coordinates);
+                }
+                // If it's a comma-separated string like "lat,lng"
+                const coords = listing.coordinates.split(',');
+                if (coords.length === 2) {
+                  return { lat: parseFloat(coords[0].trim()), lng: parseFloat(coords[1].trim()) };
+                }
                 const parsed = JSON.parse(listing.coordinates);
                 // Validate that we have valid lat/lng values
                 if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number' && 
@@ -280,9 +289,9 @@ const TenantDashboard = () => {
             }
           })(),
           available: listing.available,
-          leaseType: listing.lease_type,
+          lease_type: listing.lease_type,
           requirements: parseMaybeJson(listing.requirements, []),
-          houseRules: parseMaybeJson(listing.house_rules, []),
+          house_rules: parseMaybeJson(listing.house_rules, []),
         }));
         
         // Debug: Log property coordinates
@@ -479,6 +488,11 @@ const TenantDashboard = () => {
     
     return finalResult;
   });
+
+  // Debug: Log properties info
+  console.log('Total properties:', properties.length);
+  console.log('Filtered properties:', filteredProperties.length);
+  console.log('Properties with coordinates:', properties.filter(p => p.coordinates && p.coordinates.lat && p.coordinates.lng).length);
 
   const handlePropertyClick = (propertyId: string) => {
     navigate(`/property/${propertyId}`);
@@ -685,18 +699,9 @@ const TenantDashboard = () => {
               properties={filteredProperties} 
               onPropertyClick={handlePropertyClick}
               mapboxToken={mapboxToken}
+              onTokenSubmit={setMapboxToken}
+              showUserLocation={true}
             />
-            {!mapboxToken && (
-              <div className="absolute bottom-4 right-4 z-10">
-                <input
-                  type="text"
-                  placeholder="Enter Mapbox token..."
-                  value={mapboxToken}
-                  onChange={(e) => setMapboxToken(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md bg-white shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            )}
           </Card>
         ) : loading ? (
           <div className="flex items-center justify-center h-[70vh]">

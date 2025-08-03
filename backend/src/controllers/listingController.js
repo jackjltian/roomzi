@@ -4,6 +4,7 @@ import {
   errorResponse,
   paginatedResponse,
 } from "../utils/response.js";
+import { geocodeAddress, getFallbackCoordinates } from "../utils/geocoding.js";
 import { updateChatNamesForListing } from "../utils/chatNameUpdater.js";
 
 // Get all listings with pagination and filtering
@@ -269,6 +270,22 @@ export const createListing = async (req, res) => {
       available = true,
     } = req.body;
 
+    // Generate coordinates if not provided
+    let finalCoordinates = coordinates;
+    if (!finalCoordinates && address && city && state && zip_code) {
+      try {
+        finalCoordinates = await geocodeAddress(address, city, state, zip_code);
+        if (!finalCoordinates) {
+          // Use fallback coordinates if geocoding fails
+          finalCoordinates = getFallbackCoordinates(city, state);
+        }
+      } catch (error) {
+        console.error("Error generating coordinates:", error);
+        // Use fallback coordinates
+        finalCoordinates = getFallbackCoordinates(city, state);
+      }
+    }
+
     const listing = await prisma.listings.create({
       data: {
         landlord_id,
@@ -291,7 +308,7 @@ export const createListing = async (req, res) => {
         images,
         landlord_name,
         landlord_phone,
-        coordinates,
+        coordinates: finalCoordinates,
         available,
       },
       include: {
