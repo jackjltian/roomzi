@@ -9,8 +9,8 @@
 
 #### Decisions that turned out well
 
-Clearly listed each team member’s tasks at the start of the sprint
-* Each team member knew exactly what features and tasks to work on for the duration of the sprint
+* Clearly listed each team member’s tasks at the start of the sprint
+  * Each team member knew exactly what features and tasks to work on for the duration of the sprint
   * There was no confusion on who was working what task
 * Planned standups on the final two days of the sprint
   * Instead of planning an equal amount of time between each standup, we had a standup every other day for the majority of the sprint, with one standup on each of the final two days
