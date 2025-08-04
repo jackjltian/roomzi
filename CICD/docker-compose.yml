@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: CICD/Dockerfile.backend
+    container_name: driven-devs-backend
+    ports:
+      - "3001:3001"
+    env_file:
+      - ../backend/.env
+    volumes:
+      - backend_uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - driven-devs-network
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: CICD/Dockerfile.frontend
+    container_name: driven-devs-frontend
+    ports:
+      - "80:80"
+    env_file:
+      - ../frontend/.env
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - driven-devs-network
+
+volumes:
+  backend_uploads:
+    driver: local
+
+networks:
+  driven-devs-network:
+    driver: bridge 
