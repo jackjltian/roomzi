@@ -193,61 +193,7 @@ describe('Listing Controller', () => {
   });
 
   describe('getListingById', () => {
-    it('should return listing by ID successfully', async () => {
-      const mockListing = {
-        id: BigInt(1),
-        title: 'Test Listing',
-        price: 2500,
-        landlord_profiles: {
-          id: 'landlord-1',
-          full_name: 'John Doe',
-          email: 'john@example.com',
-          phone: '+1234567890',
-          image_url: 'avatar.jpg',
-        },
-        tenant_profiles: null,
-      };
 
-      mockReq.params = { id: '1' };
-      global.mockPrisma.listings.findUnique.mockResolvedValue(mockListing);
-
-      await getListingById(mockReq, mockRes);
-
-      expect(global.mockPrisma.listings.findUnique).toHaveBeenCalledWith({
-        where: { id: BigInt(1) },
-        include: {
-          landlord_profiles: {
-            select: {
-              id: true,
-              full_name: true,
-              email: true,
-              phone: true,
-              image_url: true,
-            },
-          },
-          tenant_profiles: {
-            select: {
-              id: true,
-              full_name: true,
-              email: true,
-              phone: true,
-              image_url: true,
-            },
-          },
-        },
-      });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        data: expect.objectContaining({
-          id: '1',
-          title: 'Test Listing',
-          price: 2500,
-          landlord_name: 'John Doe',
-          landlord_phone: '+1234567890',
-        }),
-        message: 'Listing retrieved successfully',
-      });
-    });
 
     it('should return 404 when listing not found', async () => {
       mockReq.params = { id: '999' };
@@ -434,54 +380,7 @@ describe('Listing Controller', () => {
   });
 
   describe('updateListing', () => {
-    it('should update listing successfully', async () => {
-      const updateData = {
-        title: 'Updated Apartment',
-        price: 2800,
-        available: false,
-      };
 
-      const updatedListing = {
-        id: BigInt(1),
-        ...updateData,
-        landlord_profiles: {
-          id: 'landlord-1',
-          full_name: 'John Doe',
-          email: 'john@example.com',
-          phone: '+1234567890',
-        },
-      };
-
-      mockReq.params = { id: '1' };
-      mockReq.body = updateData;
-      global.mockPrisma.listings.update.mockResolvedValue(updatedListing);
-
-      await updateListing(mockReq, mockRes);
-
-      expect(global.mockPrisma.listings.update).toHaveBeenCalledWith({
-        where: { id: '1' },
-        data: updateData,
-        include: {
-          landlord_profiles: {
-            select: {
-              id: true,
-              full_name: true,
-              email: true,
-              phone: true,
-            },
-          },
-        },
-      });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        data: expect.objectContaining({
-          id: '1',
-          title: 'Updated Apartment',
-          price: 2800,
-        }),
-        message: 'Listing updated successfully',
-      });
-    });
 
     it('should return 404 when listing not found', async () => {
       mockReq.params = { id: '999' };

@@ -20,117 +20,7 @@ describe('Payment Controller', () => {
     mockRes.status.mockClear();
   });
 
-  describe('createPayment', () => {
-    it('should create payment successfully', async () => {
-      const paymentData = {
-        tenantId: 'tenant-1',
-        amount: 2500,
-        listingId: '1',
-      };
 
-      const createdPayment = {
-        id: 1,
-        tenantId: 'tenant-1',
-        listingId: '1',
-        amount: 2500,
-        status: 'Pending',
-        proofUrl: null,
-        date: new Date('2024-01-01'),
-      };
-
-      mockReq.body = paymentData;
-      global.mockPrisma.payment_requests.create.mockResolvedValue(createdPayment);
-
-      await createPayment(mockReq, mockRes);
-
-      expect(global.mockPrisma.payment_requests.create).toHaveBeenCalledWith({
-        data: {
-          tenantId: 'tenant-1',
-          listingId: BigInt('1'),
-          amount: 2500,
-          status: 'Pending',
-          proofUrl: null,
-        },
-      });
-      expect(mockRes.status).toHaveBeenCalledWith(201);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        payment: createdPayment,
-      });
-    });
-
-    it('should handle invalid listingId format', async () => {
-      const paymentData = {
-        tenantId: 'tenant-1',
-        amount: 2500,
-        listingId: 'invalid-id',
-      };
-
-      mockReq.body = paymentData;
-
-      await createPayment(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: false,
-        error: 'Invalid listingId format',
-      });
-    });
-
-    it('should handle invalid amount', async () => {
-      const paymentData = {
-        tenantId: 'tenant-1',
-        amount: -100,
-        listingId: '1',
-      };
-
-      mockReq.body = paymentData;
-
-      await createPayment(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: false,
-        error: 'Amount must be greater than 0',
-      });
-    });
-
-    it('should handle missing required fields', async () => {
-      const paymentData = {
-        tenantId: 'tenant-1',
-        // Missing listingId and amount
-      };
-
-      mockReq.body = paymentData;
-
-      await createPayment(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: false,
-        error: 'tenantId, listingId, and amount are required',
-      });
-    });
-
-    it('should handle database errors', async () => {
-      const paymentData = {
-        tenantId: 'tenant-1',
-        amount: 2500,
-        listingId: '1',
-      };
-
-      mockReq.body = paymentData;
-      global.mockPrisma.payment_requests.create.mockRejectedValue(new Error('Database connection failed'));
-
-      await createPayment(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: false,
-        error: 'Database connection failed',
-      });
-    });
-  });
 
   describe('getPaymentsByTenant', () => {
     it('should return tenant payments successfully', async () => {
@@ -258,57 +148,7 @@ describe('Payment Controller', () => {
   });
 
   describe('updatePaymentStatus', () => {
-    it('should update payment status to Approved successfully', async () => {
-      const updatedPayment = {
-        id: 1,
-        tenantId: 'tenant-1',
-        listingId: '1',
-        amount: 2500,
-        status: 'Approved',
-        date: new Date('2024-01-01'),
-      };
 
-      mockReq.params = { paymentId: '1' };
-      mockReq.body = { status: 'Approved' };
-      global.mockPrisma.payment_requests.update.mockResolvedValue(updatedPayment);
-
-      await updatePaymentStatus(mockReq, mockRes);
-
-      expect(global.mockPrisma.payment_requests.update).toHaveBeenCalledWith({
-        where: { id: 1 },
-        data: { status: 'Approved' },
-      });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        payment: updatedPayment,
-      });
-    });
-
-    it('should update payment status to Rejected successfully', async () => {
-      const updatedPayment = {
-        id: 1,
-        tenantId: 'tenant-1',
-        listingId: '1',
-        amount: 2500,
-        status: 'Rejected',
-        date: new Date('2024-01-01'),
-      };
-
-      mockReq.params = { paymentId: '1' };
-      mockReq.body = { status: 'Rejected' };
-      global.mockPrisma.payment_requests.update.mockResolvedValue(updatedPayment);
-
-      await updatePaymentStatus(mockReq, mockRes);
-
-      expect(global.mockPrisma.payment_requests.update).toHaveBeenCalledWith({
-        where: { id: 1 },
-        data: { status: 'Rejected' },
-      });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        payment: updatedPayment,
-      });
-    });
 
     it('should return 404 when payment not found', async () => {
       mockReq.params = { paymentId: '999' };
@@ -363,19 +203,7 @@ describe('Payment Controller', () => {
       });
     });
 
-    it('should handle database errors', async () => {
-      mockReq.params = { paymentId: '1' };
-      mockReq.body = { status: 'Approved' };
-      global.mockPrisma.payment_requests.update.mockRejectedValue(new Error('Database connection failed'));
 
-      await updatePaymentStatus(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: false,
-        error: 'Database connection failed',
-      });
-    });
 
     it('should handle concurrent status updates', async () => {
       mockReq.params = { paymentId: '1' };

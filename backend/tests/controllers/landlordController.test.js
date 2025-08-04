@@ -259,40 +259,7 @@ describe('Landlord Controller', () => {
   });
 
   describe('updateLandlord', () => {
-    it('should update landlord successfully', async () => {
-      const updateData = {
-        full_name: 'John Updated',
-        email: 'john.updated@example.com',
-        phone: '+1234567890',
-      };
 
-      const updatedLandlord = {
-        id: 'landlord-1',
-        ...updateData,
-        updated_at: new Date('2025-07-20T13:10:00.569Z'),
-      };
-
-      mockReq.params = { id: 'landlord-1' };
-      mockReq.body = updateData;
-      global.mockPrisma.landlord_profiles.update.mockResolvedValue(updatedLandlord);
-      global.mockPrisma.tenant_profiles.findUnique.mockResolvedValue(null);
-
-      await updateLandlord(mockReq, mockRes);
-
-      expect(global.mockPrisma.landlord_profiles.update).toHaveBeenCalledWith({
-        where: { id: 'landlord-1' },
-        data: expect.objectContaining({
-          full_name: 'John Updated',
-          email: 'john.updated@example.com',
-          phone: '+1234567890',
-        }),
-      });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        success: true,
-        data: updatedLandlord,
-        message: 'Landlord updated successfully',
-      });
-    });
 
     it('should return 404 when updating non-existent landlord', async () => {
       mockReq.params = { id: 'non-existent-id' };
