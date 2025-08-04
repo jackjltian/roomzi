@@ -8,23 +8,40 @@ The application consists of two main services:
 - **Frontend**: React application built with Vite, served by Nginx
 - **Backend**: Node.js Express API with Prisma ORM
 
+## Recent Updates (v2.0)
+
+### 🚀 Major Improvements
+- **Node.js 20**: Upgraded from Node.js 18 to Node.js 20 for better performance and security
+- **Enhanced Security**: Non-root user execution, improved security headers, and better CSP policies
+- **Health Checks**: Comprehensive health check endpoints and Docker health checks
+- **Resource Management**: CPU and memory limits for better resource utilization
+- **Performance**: Optimized Nginx configuration with better caching and compression
+- **Error Handling**: Improved error handling and logging throughout the deployment process
+
+### 🔧 Technical Enhancements
+- **Multi-stage Builds**: Optimized Docker builds for smaller image sizes
+- **Security Headers**: Enhanced Content Security Policy and security headers
+- **File Upload Support**: Better handling of file uploads with proper size limits
+- **WebSocket Support**: Improved WebSocket proxy configuration for real-time features
+- **Environment Management**: Better environment variable templates and validation
+
 ## Files Structure
 
 ```
 CICD/
-├── Dockerfile.backend      # Backend container configuration
-├── Dockerfile.frontend     # Frontend container configuration
-├── docker-compose.yml      # Multi-service orchestration
-├── nginx.conf             # Nginx configuration for frontend
-├── .dockerignore          # Files to exclude from Docker builds
-├── build.sh               # Linux/Mac build script
-├── build.bat              # Windows build script
-├── deploy.sh              # Linux/Mac deployment script
+├── Dockerfile.backend      # Backend container configuration (Node.js 20)
+├── Dockerfile.frontend     # Frontend container configuration (Node.js 20 + Nginx)
+├── docker-compose.yml      # Multi-service orchestration with health checks
+├── nginx.conf             # Optimized Nginx configuration with security headers
+├── .dockerignore          # Comprehensive file exclusion for Docker builds
+├── deploy.sh              # Enhanced deployment script with health checks
 ├── deploy.bat             # Windows deployment script
-├── test-deployed.sh       # Linux/Mac testing script
+├── test-deployed.sh       # Testing script with comprehensive validation
 ├── test-deployed.bat      # Windows testing script
 ├── full-cd-pipeline.sh    # Complete CD pipeline (Linux/Mac)
 ├── full-cd-pipeline.bat   # Complete CD pipeline (Windows)
+├── env_backend.template   # Backend environment template (updated)
+├── env_frontend.template  # Frontend environment template (updated)
 └── README.md              # This file
 ```
 
@@ -33,6 +50,7 @@ CICD/
 - Docker Engine 20.10+
 - Docker Compose 2.0+
 - At least 2GB of available RAM
+- curl (for health checks)
 
 ## Quick Start
 
@@ -80,14 +98,19 @@ cd CICD
    SESSION_SECRET=your_session_secret
    DATABASE_URL=your_database_connection_string
    DIRECT_URL=your_direct_database_connection_string
+   OPENAI_API_KEY=your_openai_api_key
+   MAX_FILE_SIZE=10mb
+   UPLOAD_PATH=./uploads
    ```
    
    **Frontend** (`frontend/.env`):
    ```env
    VITE_SUPABASE_URL=your_supabase_project_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-   VITE_MAPBOX_TOKEN=your_mapbox_token
    VITE_API_URL=http://localhost:3001
+   VITE_MAPBOX_TOKEN=your_mapbox_token
+   VITE_APP_NAME=Roomzi Home Finder
+   VITE_APP_VERSION=1.0.0
    ```
 
 3. **Deploy from Docker Hub:**
@@ -117,6 +140,7 @@ cd CICD
 5. **Access the application:**
    - Frontend: http://localhost:80
    - Backend API: http://localhost:3001
+   - Health Check: http://localhost:3001/api/health
 
 ## CD Pipeline Scripts
 
@@ -235,11 +259,20 @@ docker stack deploy -c docker-compose.yml driven-devs
 - `FRONTEND_URL`: Frontend application URL
 - `PORT`: Backend server port (default: 3001)
 - `NODE_ENV`: Environment mode (production/development)
+- `JWT_SECRET`: JWT signing secret
+- `JWT_EXPIRES_IN`: JWT expiration time
+- `SESSION_SECRET`: Session secret
+- `OPENAI_API_KEY`: OpenAI API key for AI features
+- `MAX_FILE_SIZE`: Maximum file upload size
+- `UPLOAD_PATH`: File upload directory
 
 ### Frontend Environment Variables
 - `VITE_SUPABASE_URL`: Supabase project URL
 - `VITE_SUPABASE_ANON_KEY`: Supabase anonymous key
 - `VITE_API_URL`: Backend API URL
+- `VITE_MAPBOX_TOKEN`: Mapbox API token
+- `VITE_APP_NAME`: Application name
+- `VITE_APP_VERSION`: Application version
 
 ## Database Setup
 
@@ -261,6 +294,76 @@ The backend uses Prisma ORM. Before running the containers:
    npm run db:seed
    ```
 
+## Security Features
+
+### Container Security
+- **Non-root Users**: Both frontend and backend containers run as non-root users
+- **Security Headers**: Comprehensive security headers in Nginx configuration
+- **Content Security Policy**: Strict CSP policy for XSS protection
+- **Resource Limits**: CPU and memory limits to prevent resource exhaustion
+
+### Network Security
+- **Isolated Networks**: Services communicate through Docker networks
+- **Port Exposure**: Only necessary ports are exposed
+- **Proxy Headers**: Proper proxy headers for load balancer support
+
+### File Security
+- **Upload Validation**: File size and type validation
+- **Secure File Handling**: Proper file permissions and ownership
+- **Environment Isolation**: Sensitive data kept in environment variables
+
+## Performance Optimization
+
+### Multi-stage Builds
+The Dockerfiles use multi-stage builds to:
+- Reduce final image size
+- Separate build dependencies from runtime
+- Improve build caching
+
+### Nginx Configuration
+The frontend uses Nginx with:
+- Gzip compression (level 6)
+- Static asset caching (1 year)
+- Security headers
+- React Router support
+- WebSocket proxy support
+- File upload handling
+
+### Resource Management
+- **Memory Limits**: Backend: 512MB, Frontend: 256MB
+- **CPU Limits**: Backend: 0.5 CPU, Frontend: 0.25 CPU
+- **Health Checks**: Regular health monitoring
+- **Connection Pooling**: Keepalive connections
+
+### Volume Management
+- Uploads are persisted using Docker volumes
+- Database data should be stored in external volumes for production
+
+## Health Checks
+
+### Health Check Endpoints
+- Backend: `GET /api/health`
+- Frontend: `GET /health`
+
+### Docker Health Checks
+- Backend: Checks API health endpoint every 30s
+- Frontend: Checks web server accessibility every 30s
+
+### Monitoring Commands
+```bash
+# Check container status
+docker-compose ps
+
+# Monitor resource usage
+docker stats
+
+# Check container health
+docker inspect --format='{{.State.Health.Status}}' container_name
+
+# View health check logs
+docker inspect --format='{{json .State.Health}}' container_name
+```
+
 ## Troubleshooting
 
 ### Common Issues
@@ -281,6 +384,11 @@ The backend uses Prisma ORM. Before running the containers:
    - Ensure proper file permissions
    - Check Docker user permissions
 
+5. **Health check failures:**
+   - Check container logs: `docker-compose logs`
+   - Verify environment variables are set correctly
+   - Ensure services are starting properly
+
 ### Logs and Debugging
 
 ```bash
@@ -297,51 +405,9 @@ docker-compose logs -f
 # Access container shell
 docker-compose exec backend sh
 docker-compose exec frontend sh
-```
 
-## Performance Optimization
-
-### Multi-stage Builds
-The Dockerfiles use multi-stage builds to:
-- Reduce final image size
-- Separate build dependencies from runtime
-- Improve build caching
-
-### Nginx Configuration
-The frontend uses Nginx with:
-- Gzip compression
-- Static asset caching
-- Security headers
-- React Router support
-
-### Volume Management
-- Uploads are persisted using Docker volumes
-- Database data should be stored in external volumes for production
-
-## Security Considerations
-
-1. **Environment Variables:** Never commit sensitive data to version control
-2. **User Permissions:** Containers run as non-root users
-3. **Network Isolation:** Services communicate through Docker networks
-4. **Security Headers:** Nginx includes security headers
-5. **Dependency Scanning:** Regularly update dependencies
-
-## Monitoring and Health Checks
-
-### Health Check Endpoints
-- Backend: `GET /api/health`
-- Frontend: `GET /`
-
-### Monitoring Commands
-```bash
-# Check container status
+# Check health status
 docker-compose ps
-
-# Monitor resource usage
-docker stats
-
-# Check container health
-docker inspect --format='{{.State.Health.Status}}' container_name
 ```
 
 ## Backup and Recovery
@@ -434,6 +500,8 @@ When making changes to the Docker configuration:
 3. Ensure all environment variables are documented
 4. Test both development and production builds
 5. Update CD pipeline scripts if deployment process changes
+6. Run security scans on the final images
+7. Test health checks and monitoring
 
 ## License
 

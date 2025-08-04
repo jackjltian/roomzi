@@ -74,6 +74,13 @@ if not exist "..\backend\.env" (
     echo. >> ..\backend\.env
     echo # Direct connection to the database. Used for migrations >> ..\backend\.env
     echo DIRECT_URL=%DIRECT_URL% >> ..\backend\.env
+    echo. >> ..\backend\.env
+    echo # OpenAI Configuration (for AI features) >> ..\backend\.env
+    echo OPENAI_API_KEY=%OPENAI_API_KEY% >> ..\backend\.env
+    echo. >> ..\backend\.env
+    echo # File Upload Configuration >> ..\backend\.env
+    echo MAX_FILE_SIZE=10mb >> ..\backend\.env
+    echo UPLOAD_PATH=./uploads >> ..\backend\.env
     echo [SUCCESS] Backend .env file created from GitHub Secrets!
 )
 
@@ -87,8 +94,15 @@ if not exist "..\frontend\.env" (
     echo VITE_SUPABASE_URL=%SUPABASE_URL% >> ..\frontend\.env
     echo VITE_SUPABASE_ANON_KEY=%SUPABASE_ANON_KEY% >> ..\frontend\.env
     echo. >> ..\frontend\.env
+    echo # API Configuration >> ..\frontend\.env
+    echo VITE_API_URL=http://localhost:3001 >> ..\frontend\.env
+    echo. >> ..\frontend\.env
     echo # Mapbox Configuration >> ..\frontend\.env
     echo VITE_MAPBOX_TOKEN=%MAPBOX_TOKEN% >> ..\frontend\.env
+    echo. >> ..\frontend\.env
+    echo # Application Configuration >> ..\frontend\.env
+    echo VITE_APP_NAME=Roomzi Home Finder >> ..\frontend\.env
+    echo VITE_APP_VERSION=1.0.0 >> ..\frontend\.env
     echo [SUCCESS] Frontend .env file created from GitHub Secrets!
 )
 

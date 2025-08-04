@@ -33,11 +33,19 @@ jobs:
           # Session Configuration
           SESSION_SECRET=${{ secrets.SESSION_SECRET }}
           
+          # Database Configuration
           # Connect to Supabase via connection pooling
           DATABASE_URL=${{ secrets.DATABASE_URL }}
           
           # Direct connection to the database. Used for migrations
           DIRECT_URL=${{ secrets.DIRECT_URL }}
+          
+          # OpenAI Configuration (for AI features)
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          
+          # File Upload Configuration
+          MAX_FILE_SIZE=10mb
+          UPLOAD_PATH=./uploads
           EOF
       
       - name: Create frontend .env from secrets
@@ -50,8 +58,15 @@ jobs:
           VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           
+          # API Configuration
+          VITE_API_URL=http://localhost:3001
+          
           # Mapbox Configuration
           VITE_MAPBOX_TOKEN=${{ secrets.MAPBOX_TOKEN }}
+          
+          # Application Configuration
+          VITE_APP_NAME=Roomzi Home Finder
+          VITE_APP_VERSION=1.0.0
           EOF
       
       - name: Run CD Pipeline
