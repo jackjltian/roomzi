@@ -1,4 +1,5 @@
 #!/bin/bash
+export PATH=$PATH:/usr/local/bin
 
 # Driven Devs Complete CD Pipeline
 # This script implements a full Continuous Delivery pipeline including deployment and testing
