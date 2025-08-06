@@ -243,16 +243,5 @@ To run the full application with backend functionality:
    npx prisma db push
    ```
 
-## Recent Updates
 
-### ✨ Landlord Profile Implementation (Latest)
-
-- **Complete Profile Management**: Full CRUD operations for landlord profiles
-- **Profile Picture Upload**: Secure image upload with validation and storage
-- **Edit Mode Interface**: Toggle between view and edit modes for profile information
-- **Form Validation**: Client-side and server-side validation for all profile fields
-- **Upsert Functionality**: Backend upsert operations to handle profile creation/updates
-- **Storage Bucket Management**: Automatic creation of Supabase storage buckets
-
-For detailed documentation on the landlord profile implementation, see [LANDLORD_PROFILE_IMPLEMENTATION.md](./LANDLORD_PROFILE_IMPLEMENTATION.md).
 
