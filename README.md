@@ -1,5 +1,4 @@
-# Roomzi - Sprint 1
-
+# Roomzi
 
 ## About Roomzi
 
@@ -10,18 +9,6 @@ Roomzi is a modern, full-stack web application designed to revolutionize the ren
 - **For Tenants**: Easily discover and search for rental properties with advanced filtering, interactive map views, and direct communication with landlords
 - **For Landlords**: Efficiently manage property listings, track rental income, and communicate with potential tenants through a comprehensive dashboard
 - **For Everyone**: Streamline the rental process with secure authentication, real-time messaging, and a responsive, user-friendly interface
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js (v18 or higher)
-- npm or yarn
-- Git
-
-### Installation & Setup
-
-1. **Clone the repository**
 
 ## Project Overview
 
@@ -41,8 +28,8 @@ Roomzi is a modern web application that connects landlords and tenants in Toront
 
 ### Prerequisites
 
-- Node.js (v16 or higher)
-- npm (v7 or higher) or yarn
+- Node.js (v18 or higher)
+- npm or yarn
 - Mapbox API key (for map functionality)
 - Git
 
@@ -50,17 +37,12 @@ Roomzi is a modern web application that connects landlords and tenants in Toront
 
 1. Clone the repository:
 
-
    ```bash
-   git clone https://github.com/yourusername/term-group-project-driven-devs.git
-   cd term-group-project-driven-devs
+   git clone https://github.com/jackjltian/roomzi.git
+   cd roomzi
    ```
 
-
 2. **Backend Setup**
-
-2. Navigate to the application directory:
-
 
    ```bash
    cd backend
@@ -81,16 +63,11 @@ Roomzi is a modern web application that connects landlords and tenants in Toront
    npm run db:seed
    ```
 
-
 3. **Frontend Setup**
-
-3. Install dependencies:
-
 
    ```bash
    cd ../frontend
    npm install
-
 
    # Create .env file
    touch .env
@@ -100,10 +77,6 @@ Roomzi is a modern web application that connects landlords and tenants in Toront
    # VITE_SUPABASE_ANON_KEY=your_anon_key
    # VITE_API_BASE_URL=http://localhost:3001
    # VITE_MAPBOX_TOKEN=your_mapbox_token (optional)
-
-4. [Opitional] Create a `.env` file in the roomzi-home-finder directory:
-
-
    ```
 
 ### Running the Application
@@ -171,15 +144,12 @@ Roomzi is a modern web application that connects landlords and tenants in Toront
 
 ## Team - Driven Devs
 
-
 - Haris Malik
 - Jack Tian
 - Ishika Vithani
 - Liaba Zeeshan
 - Amanda Zhu
 - Thushshan Rameswaran
-
-The application will be available at `http://localhost:8080`
 
 ## Features
 
@@ -242,6 +212,3 @@ To run the full application with backend functionality:
    npx prisma generate
    npx prisma db push
    ```
-
-
-
